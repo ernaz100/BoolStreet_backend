@@ -12,13 +12,15 @@ import pandas as pd
 
 from storage import _Session, DailyBar, get_script_code, UserScript
 from dotenv import load_dotenv
+from broker import execute_orders  # NEW – Polygon paper-trading
+
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Constants – tune as needed
 # ---------------------------------------------------------------------------
 CPU_LIMIT_SECS: int = int(os.getenv("SANDBOX_CPU_LIMIT", "5"))  # max CPU seconds
 MEM_LIMIT_BYTES: int = int(os.getenv("SANDBOX_MEM_LIMIT", str(200 * 1024 * 1024)))  # 200 MB
-
 
 # ---------------------------------------------------------------------------
 # Helper: query current stock data and return as DataFrame
@@ -83,6 +85,30 @@ def run_user_script(script_id: int) -> Dict[str, Any]:
 
     The script must expose a top-level `run(data: pd.DataFrame) -> dict`.
     We execute it in a subprocess with strict resource limits.
+
+    Expected contract for the returned JSON:
+
+    {
+        "orders": [
+            {
+                "symbol": "AAPL",
+                "side": "buy" | "sell",
+                "qty": 10,
+                "type": "market" | "limit" (default="market"),
+                "limit_price": 185.50,      # required if type=="limit"
+                "time_in_force": "day"      # default
+            },
+            ...
+        ],
+        "meta": {  # optional – any other user defined information
+            "comment": "RSI cross-over signal",
+            "signal_strength": 0.83
+        }
+    }
+
+    The `orders` list is optional; if present the orders will be sent
+    to Alpaca's *paper* trading endpoint right after the script
+    completes (see `broker.execute_orders`).
     """
 
     code = get_script_code(script_id)
@@ -91,7 +117,6 @@ def run_user_script(script_id: int) -> Dict[str, Any]:
 
     df = load_current_data()
     data_json = df.to_json(orient="records")
-
     with tempfile.TemporaryDirectory() as tmpdir:
         script_path = os.path.join(tmpdir, "user_script.py")
         with open(script_path, "w", encoding="utf-8") as f:
@@ -125,6 +150,21 @@ def run_user_script(script_id: int) -> Dict[str, Any]:
             raise RuntimeError(f"User script did not return valid JSON: {exc}\n{stdout}")
 
         end_time = datetime.now(timezone.utc)
+
+        # -------------------------------------------------------
+        # Optional trade execution – if the user script returns
+        # a JSON payload with an "orders" key we forward each
+        # specified order to Alpaca's paper-trading endpoint.
+        # A receipt (either success or error) is attached to the
+        # final result so that the caller can inspect what
+        # happened.
+        # -------------------------------------------------------
+        receipts = []
+        if isinstance(result, dict):
+            orders = result.get("orders", [])
+            if orders:
+                receipts = execute_orders(orders)
+
         # For now we just return the result; later we could persist logs.
         return {
             "script_id": script_id,
@@ -132,7 +172,7 @@ def run_user_script(script_id: int) -> Dict[str, Any]:
             "ended_at": end_time.isoformat(),
             "duration_secs": (end_time - start_time).total_seconds(),
             "output": result,
-        }
+        }, receipts
 
 def execute_all_scripts() -> List[Dict[str, Any]]:
     """
@@ -153,7 +193,7 @@ def execute_all_scripts() -> List[Dict[str, Any]]:
         scripts = session.query(UserScript).all()
         for script in scripts:
             try:
-                result = run_user_script(script.id)
+                result, receipts = run_user_script(script.id)
                 results.append({
                     "script_id": script.id,
                     "script_name": script.name,
@@ -161,6 +201,7 @@ def execute_all_scripts() -> List[Dict[str, Any]]:
                     "ended_at": result["ended_at"],
                     "duration_secs": result["duration_secs"],
                     "output": result["output"],
+                    "orders": receipts,
                     "success": True
                 })
             except Exception as exc:

@@ -35,7 +35,6 @@ def upload_script():
     """
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
-
     f = request.files['file']
     if f.filename == '':
         return jsonify({"error": "No file selected"}), 400
@@ -50,7 +49,7 @@ def upload_script():
     script_id = save_script(name, code)
 
     try:
-        result = run_user_script(script_id)
+        result, receipts = run_user_script(script_id)
         final = {
             "script_id": script_id,
             "script_name": name,
@@ -58,6 +57,7 @@ def upload_script():
             "ended_at": result["ended_at"],
             "duration_secs": result["duration_secs"],
             "output": result["output"],
+            "orders": receipts,
             "success": True
         }
     except Exception as exc:
@@ -83,7 +83,7 @@ def reset_db():
 
 if __name__ == '__main__':
     # Run the app in debug mode if in development
-   # drop_all()
+    drop_all()
     init_db()
     start_scheduler()
     debug = os.getenv('FLASK_ENV') == 'development'
