@@ -21,11 +21,13 @@ CORS(app)
 
 # Basic configuration
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-key-please-change-in-production')
+app.config['JWT_TOKEN_LOCATION'] = ['headers']
+app.config['JWT_HEADER_NAME'] = 'Authorization'
+app.config['JWT_HEADER_TYPE'] = 'Bearer'
 jwt = JWTManager(app)
 
 # Register blueprints
 app.register_blueprint(auth_bp)
-
 
 @app.route('/scripts', methods=['POST'])
 @jwt_required()
@@ -36,6 +38,7 @@ def upload_script():
     Expects multipart/form-data with:
     - 'file': the .py source file
     - 'name': user-friendly name (optional, defaults to filename)
+    - 'model_type': type of model (optional)
 
     Returns:
         JSON response with script id and status
@@ -47,6 +50,7 @@ def upload_script():
         return jsonify({"error": "No file selected"}), 400
 
     name = request.form.get('name', f.filename)
+    model_type = request.form.get('model_type', '')
     code = f.read().decode('utf-8')
 
     # quick validation – require a `def run(data):` entry point
@@ -54,7 +58,10 @@ def upload_script():
         return jsonify({"error": "Script must expose a `run(data)` function"}), 400
 
     # Get user ID from JWT token
-    user_id = get_jwt_identity()['user_id']
+    user_id = get_jwt_identity()
+    if not isinstance(user_id, str):
+        return jsonify({"error": "Invalid token format"}), 401
+
     script_id = save_script(name, code, user_id)
     try:
         result, receipts = run_user_script(script_id)
@@ -95,7 +102,7 @@ def reset_db():
 
 if __name__ == '__main__':
     # Run the app in debug mode if in development
-    drop_all()
+    #drop_all()
     init_db()
     start_scheduler()
     debug = os.getenv('FLASK_ENV') == 'development'

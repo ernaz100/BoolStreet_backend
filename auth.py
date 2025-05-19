@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from google.oauth2 import id_token
 from google.auth.transport import requests
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 import os
 from dotenv import load_dotenv
 
@@ -37,13 +37,8 @@ def google_auth():
         name = idinfo.get('name', '')
         picture = idinfo.get('picture', '')
 
-        # Create a JWT token
-        access_token = create_access_token(identity={
-            'user_id': user_id,
-            'email': email,
-            'name': name,
-            'picture': picture
-        })
+        # Create a JWT token with user_id as the identity
+        access_token = create_access_token(identity=str(user_id))
 
         return jsonify({
             'access_token': access_token,
@@ -58,4 +53,28 @@ def google_auth():
         # Invalid token
         return jsonify({'error': 'Invalid token'}), 401
     except Exception as e:
-        return jsonify({'error': str(e)}), 500 
+        return jsonify({'error': str(e)}), 500
+
+@auth_bp.route('/auth/me', methods=['GET'])
+@jwt_required()
+def get_current_user():
+    """
+    Get the current user's information from the JWT token
+    Protected route that requires a valid JWT token
+    Returns the user's information if the token is valid
+    """
+    try:
+        # Get the user ID from the JWT token
+        user_id = get_jwt_identity()
+        
+        # TODO: Fetch user data from database using user_id
+        # For now, return a placeholder response
+        return jsonify({
+            'user_id': user_id,
+            'email': 'user@example.com',  # This should come from your database
+            'name': 'User',  # This should come from your database
+            'picture': ''  # This should come from your database
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 401 
