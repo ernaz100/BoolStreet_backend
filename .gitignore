@@ -1,1 +1,5 @@
 venv/
+.env
+boolstreet.db
+__pycache__/
+instance/

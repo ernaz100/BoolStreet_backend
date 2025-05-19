@@ -1,8 +1,12 @@
-from flask import Flask, jsonify
+from datetime import datetime
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 import yfinance as yf
+from ingestion import start_scheduler
+from executor import run_user_script
+from storage import save_script, init_db, drop_all
 
 # Load environment variables
 load_dotenv()
@@ -17,51 +21,70 @@ CORS(app)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-key-please-change-in-production')
 
 
-@app.route('/', methods=['GET'])
-def get_apple_stock():
+@app.route('/scripts', methods=['POST'])
+def upload_script():
     """
-    Fetch Apple stock data using yfinance
-    
+    Upload a user strategy script.
+
+    Expects multipart/form-data with:
+    - 'file': the .py source file
+    - 'name': user-friendly name (optional, defaults to filename)
+
     Returns:
-        JSON response with Apple stock information
+        JSON response with script id and status
     """
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+
+    f = request.files['file']
+    if f.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    name = request.form.get('name', f.filename)
+    code = f.read().decode('utf-8')
+
+    # quick validation – require a `def run(data):` entry point
+    if "def run(" not in code:
+        return jsonify({"error": "Script must expose a `run(data)` function"}), 400
+
+    script_id = save_script(name, code)
+
     try:
-        # Get Apple stock data
-        apple = yf.Ticker("AAPL")
-        
-        # Get historical market data
-        hist = apple.history(period="1mo")
-        
-        # Get stock info
-        info = apple.info
-        
-        # Extract relevant data
-        stock_data = {
-            "symbol": "AAPL",
-            "company_name": info.get('shortName', 'Apple Inc.'),
-            "current_price": info.get('currentPrice', None),
-            "market_cap": info.get('marketCap', None),
-            "previous_close": info.get('previousClose', None),
-            "open": info.get('open', None),
-            "day_high": info.get('dayHigh', None),
-            "day_low": info.get('dayLow', None),
-            "fifty_day_avg": info.get('fiftyDayAverage', None),
-            "two_hundred_day_avg": info.get('twoHundredDayAverage', None),
-            "historical_data": {
-                "dates": hist.index.strftime('%Y-%m-%d').tolist(),
-                "closing_prices": hist['Close'].tolist(),
-                "volumes": hist['Volume'].tolist()
-            }
+        result = run_user_script(script_id)
+        final = {
+            "script_id": script_id,
+            "script_name": name,
+            "started_at": result["started_at"],
+            "ended_at": result["ended_at"],
+            "duration_secs": result["duration_secs"],
+            "output": result["output"],
+            "success": True
         }
-        
-        return jsonify(stock_data), 200
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to fetch Apple stock data",
-            "message": str(e)
-        }), 500
+    except Exception as exc:
+        final = {
+            "script_id": script_id,
+            "script_name": name,
+            "started_at": datetime.now().isoformat(),
+            "ended_at": datetime.now().isoformat(),
+            "duration_secs": 0,
+            "output": str(exc),
+            "success": False
+        }
+    status = "✅" if final["success"] else "❌"
+    print(f"  • Script {final['script_id']} ({final['script_name']}) {status}: {final['output']}")
+    return jsonify({"id": script_id, "status": "stored"}), 201
+
+@app.route('/reset-db', methods=['POST'])
+def reset_db():
+    """Drop all tables and recreate them. Use with caution."""
+    drop_all()
+    init_db()
+    return jsonify({"status": "Database reset complete"}), 200
 
 if __name__ == '__main__':
     # Run the app in debug mode if in development
+   # drop_all()
+    init_db()
+    start_scheduler()
     debug = os.getenv('FLASK_ENV') == 'development'
-    app.run(host='0.0.0.0', port=5005, debug=debug) 
+    app.run(host='0.0.0.0', port=5005, debug=debug)

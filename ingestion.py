@@ -8,6 +8,7 @@ import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 from storage import init_db, upsert_daily_bar
+from executor import execute_all_scripts
 
 # -------------------------------------------------------------
 # Ingestion layer for periodic market-data pulls from Polygon.io
@@ -84,6 +85,12 @@ def fetch_all() -> None:
         except Exception as exc:
             print(f"  • {ticker:5}  ⚠️  Error: {exc}")
 
+    # Execute all registered scripts
+    results = execute_all_scripts()
+    for result in results:
+        status = "✅" if result["success"] else "❌"
+        print(f"  • Script {result['script_id']} ({result['script_name']}) {status}: {result['output']}")
+
 
 # ---------------------------------------------------------------------------
 # Scheduler setup – poll every 15 minutes (free plan ⇒ ≈20 requests/hour)
@@ -95,23 +102,6 @@ def start_scheduler() -> None:
     # Job runs immediately once the scheduler starts, then every 15 minutes.
     scheduler.add_job(fetch_all, "interval", minutes=15, next_run_time=datetime.now(UTC))
     scheduler.start()
-    print("[INGEST] 🚀  Scheduler started (interval: 15 min). Press Ctrl-C to exit.")
-
-    try:
-        # Keep the main thread alive so that the background scheduler keeps
-        # running. A more robust implementation would hook into a process
-        # manager (systemd, supervisord, Docker health-checks, etc.).
-        while True:
-            time.sleep(60)
-    except (KeyboardInterrupt, SystemExit):
-        print("[INGEST] 🛑  Shutting down scheduler…")
-        scheduler.shutdown()
+    print("[INGEST] 🚀  Scheduler started (interval: 15 min).")
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    # Initialize database (creates tables on first run)
-    init_db()
-    start_scheduler() 

@@ -6,11 +6,14 @@ from sqlalchemy import (
     Column,
     String,
     Float,
+    Integer,
     BigInteger,
     Date,
     create_engine,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
+from dotenv import load_dotenv
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Database configuration
@@ -21,7 +24,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 #   export DATABASE_URL="postgresql+psycopg2://boolstreet:boolstreet@localhost:5432/boolstreet"
 # ---------------------------------------------------------------------------
 
-DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///marketdata.db")
+DATABASE_URL: str = os.getenv("DATABASE_URL")
 
 _engine = create_engine(DATABASE_URL, echo=False, future=True)
 _Session = sessionmaker(bind=_engine, autoflush=False, autocommit=False, future=True)
@@ -49,7 +52,7 @@ class UserScript(Base):
 
     __tablename__ = "user_scripts"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
     code = Column(String, nullable=False)
     created_at = Column(Date, default=date_cls.today)
@@ -109,3 +112,8 @@ def get_script_code(script_id: int) -> str | None:
     with _Session() as session:
         script = session.get(UserScript, script_id)
         return script.code if script else None 
+
+
+def drop_all() -> None:
+    """Drop all tables. Use with caution."""
+    Base.metadata.drop_all(bind=_engine)

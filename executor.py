@@ -5,12 +5,13 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, List
 import resource  # Unix only – safe for dev and most prod servers
 
 import pandas as pd
 
-from storage import _Session, DailyBar, get_script_code
+from storage import _Session, DailyBar, get_script_code, UserScript
+from dotenv import load_dotenv
 
 # ---------------------------------------------------------------------------
 # Constants – tune as needed
@@ -66,11 +67,14 @@ def load_current_data() -> pd.DataFrame:
 
 def _apply_limits() -> None:
     """Pre-exec hook that sets CPU & memory limits in the child process."""
-
-    # CPU
-    resource.setrlimit(resource.RLIMIT_CPU, (CPU_LIMIT_SECS, CPU_LIMIT_SECS))
-    # Memory (address space)
-    resource.setrlimit(resource.RLIMIT_AS, (MEM_LIMIT_BYTES, MEM_LIMIT_BYTES))
+    try:
+        # CPU
+        resource.setrlimit(resource.RLIMIT_CPU, (CPU_LIMIT_SECS, CPU_LIMIT_SECS))
+        # Memory (address space)
+        resource.setrlimit(resource.RLIMIT_AS, (MEM_LIMIT_BYTES, MEM_LIMIT_BYTES))
+    except Exception as e:
+        import sys
+        sys.stderr.write(f"Warning: Could not apply resource limits: {e}\n")
 
 
 
@@ -128,4 +132,45 @@ def run_user_script(script_id: int) -> Dict[str, Any]:
             "ended_at": end_time.isoformat(),
             "duration_secs": (end_time - start_time).total_seconds(),
             "output": result,
-        } 
+        }
+
+def execute_all_scripts() -> List[Dict[str, Any]]:
+    """
+    Execute all registered user scripts and return their results.
+    
+    Returns:
+        List[Dict[str, Any]]: List of execution results, each containing:
+            - script_id: ID of the executed script
+            - script_name: Name of the script
+            - started_at: ISO timestamp of execution start
+            - ended_at: ISO timestamp of execution end
+            - duration_secs: Execution duration in seconds
+            - output: Script output or error message
+            - success: Whether execution succeeded
+    """
+    results = []
+    with _Session() as session:
+        scripts = session.query(UserScript).all()
+        for script in scripts:
+            try:
+                result = run_user_script(script.id)
+                results.append({
+                    "script_id": script.id,
+                    "script_name": script.name,
+                    "started_at": result["started_at"],
+                    "ended_at": result["ended_at"],
+                    "duration_secs": result["duration_secs"],
+                    "output": result["output"],
+                    "success": True
+                })
+            except Exception as exc:
+                results.append({
+                    "script_id": script.id,
+                    "script_name": script.name,
+                    "started_at": datetime.now(timezone.utc).isoformat(),
+                    "ended_at": datetime.now(timezone.utc).isoformat(),
+                    "duration_secs": 0,
+                    "output": str(exc),
+                    "success": False
+                })
+    return results
