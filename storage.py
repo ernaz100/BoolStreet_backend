@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     BigInteger,
     Date,
+    Boolean,
     create_engine,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -53,9 +54,12 @@ class UserScript(Base):
     __tablename__ = "user_scripts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(255), nullable=False)  # Google OAuth user ID
     name = Column(String(255), nullable=False)
     code = Column(String, nullable=False)
     created_at = Column(Date, default=date_cls.today)
+    active = Column(Boolean, default=True)  # Whether the script is currently active
+    balance = Column(Float, default=1000.0)  # Starting balance for the script
 
 
 # ---------------------------------------------------------------------------
@@ -97,10 +101,31 @@ def upsert_daily_bar(ticker: str, bar: Dict[str, float | int]) -> None:
         session.commit()
 
 
-def save_script(name: str, code: str) -> int:
-    """Persist a user script and return its assigned id."""
+def save_script(name: str, code: str, user_id: str) -> int:
+    """Persist a user script and return its assigned id.
+    
+    Parameters
+    ----------
+    name : str
+        User-friendly name for the script
+    code : str
+        Raw source code of the script
+    user_id : str
+        Google OAuth user ID of the script owner
+        
+    Returns
+    -------
+    int
+        The assigned script ID
+    """
     with _Session() as session:
-        script = UserScript(name=name, code=code)
+        script = UserScript(
+            name=name,
+            code=code,
+            user_id=user_id,
+            active=True,
+            balance=1000.0
+        )
         session.add(script)
         session.commit()
         session.refresh(script)

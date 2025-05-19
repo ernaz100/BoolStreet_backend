@@ -176,42 +176,63 @@ def run_user_script(script_id: int) -> Dict[str, Any]:
 
 def execute_all_scripts() -> List[Dict[str, Any]]:
     """
-    Execute all registered user scripts and return their results.
+    Execute all registered active user scripts and return their results.
     
     Returns:
         List[Dict[str, Any]]: List of execution results, each containing:
             - script_id: ID of the executed script
             - script_name: Name of the script
+            - user_id: ID of the script owner
             - started_at: ISO timestamp of execution start
             - ended_at: ISO timestamp of execution end
             - duration_secs: Execution duration in seconds
             - output: Script output or error message
             - success: Whether execution succeeded
+            - balance: Current balance after execution
     """
     results = []
     with _Session() as session:
-        scripts = session.query(UserScript).all()
+        # Only get active scripts
+        scripts = session.query(UserScript).filter(UserScript.active == True).all()
         for script in scripts:
             try:
                 result, receipts = run_user_script(script.id)
+                
+                # Calculate new balance based on orders
+                new_balance = script.balance
+                for receipt in receipts:
+                    # Assuming receipt contains 'type' ('buy'/'sell') and 'amount'
+                    if receipt['type'] == 'buy':
+                        new_balance -= receipt['amount']
+                    else:  # sell
+                        new_balance += receipt['amount']
+                
+                # Update script balance
+                script.balance = new_balance
+                session.commit()
+                
                 results.append({
                     "script_id": script.id,
                     "script_name": script.name,
+                    "user_id": script.user_id,
                     "started_at": result["started_at"],
                     "ended_at": result["ended_at"],
                     "duration_secs": result["duration_secs"],
                     "output": result["output"],
                     "orders": receipts,
-                    "success": True
+                    "success": True,
+                    "balance": new_balance
                 })
             except Exception as exc:
                 results.append({
                     "script_id": script.id,
                     "script_name": script.name,
+                    "user_id": script.user_id,
                     "started_at": datetime.now(timezone.utc).isoformat(),
                     "ended_at": datetime.now(timezone.utc).isoformat(),
                     "duration_secs": 0,
                     "output": str(exc),
-                    "success": False
+                    "success": False,
+                    "balance": script.balance
                 })
     return results

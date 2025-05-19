@@ -1,12 +1,14 @@
 from datetime import datetime
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 from dotenv import load_dotenv
 import os
 import yfinance as yf
 from ingestion import start_scheduler
 from executor import run_user_script
 from storage import save_script, init_db, drop_all
+from auth import auth_bp
 
 # Load environment variables
 load_dotenv()
@@ -19,9 +21,14 @@ CORS(app)
 
 # Basic configuration
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-key-please-change-in-production')
+jwt = JWTManager(app)
+
+# Register blueprints
+app.register_blueprint(auth_bp)
 
 
 @app.route('/scripts', methods=['POST'])
+@jwt_required()
 def upload_script():
     """
     Upload a user strategy script.
@@ -46,8 +53,9 @@ def upload_script():
     if "def run(" not in code:
         return jsonify({"error": "Script must expose a `run(data)` function"}), 400
 
-    script_id = save_script(name, code)
-
+    # Get user ID from JWT token
+    user_id = get_jwt_identity()['user_id']
+    script_id = save_script(name, code, user_id)
     try:
         result, receipts = run_user_script(script_id)
         final = {
@@ -72,7 +80,11 @@ def upload_script():
         }
     status = "✅" if final["success"] else "❌"
     print(f"  • Script {final['script_id']} ({final['script_name']}) {status}: {final['output']}")
-    return jsonify({"id": script_id, "status": "stored"}), 201
+
+    return jsonify({
+        "status": "success",
+        "script_id": script_id
+    }), 200
 
 @app.route('/reset-db', methods=['POST'])
 def reset_db():
