@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
@@ -6,9 +6,9 @@ from dotenv import load_dotenv
 import os
 import yfinance as yf
 from ingestion import start_scheduler
-from executor import run_user_script
-from storage import save_script, init_db, drop_all
+from storage import init_db, drop_all
 from auth import auth_bp
+from scripts import scripts_bp
 
 # Load environment variables
 load_dotenv()
@@ -24,74 +24,12 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-key-please-change-in-pro
 app.config['JWT_TOKEN_LOCATION'] = ['headers']
 app.config['JWT_HEADER_NAME'] = 'Authorization'
 app.config['JWT_HEADER_TYPE'] = 'Bearer'
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)  # Set token expiration to 24 hours
 jwt = JWTManager(app)
 
 # Register blueprints
 app.register_blueprint(auth_bp)
-
-@app.route('/scripts', methods=['POST'])
-@jwt_required()
-def upload_script():
-    """
-    Upload a user strategy script.
-
-    Expects multipart/form-data with:
-    - 'file': the .py source file
-    - 'name': user-friendly name (optional, defaults to filename)
-    - 'model_type': type of model (optional)
-
-    Returns:
-        JSON response with script id and status
-    """
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
-    f = request.files['file']
-    if f.filename == '':
-        return jsonify({"error": "No file selected"}), 400
-
-    name = request.form.get('name', f.filename)
-    model_type = request.form.get('model_type', '')
-    code = f.read().decode('utf-8')
-
-    # quick validation – require a `def run(data):` entry point
-    if "def run(" not in code:
-        return jsonify({"error": "Script must expose a `run(data)` function"}), 400
-
-    # Get user ID from JWT token
-    user_id = get_jwt_identity()
-    if not isinstance(user_id, str):
-        return jsonify({"error": "Invalid token format"}), 401
-
-    script_id = save_script(name, code, user_id)
-    try:
-        result, receipts = run_user_script(script_id)
-        final = {
-            "script_id": script_id,
-            "script_name": name,
-            "started_at": result["started_at"],
-            "ended_at": result["ended_at"],
-            "duration_secs": result["duration_secs"],
-            "output": result["output"],
-            "orders": receipts,
-            "success": True
-        }
-    except Exception as exc:
-        final = {
-            "script_id": script_id,
-            "script_name": name,
-            "started_at": datetime.now().isoformat(),
-            "ended_at": datetime.now().isoformat(),
-            "duration_secs": 0,
-            "output": str(exc),
-            "success": False
-        }
-    status = "✅" if final["success"] else "❌"
-    print(f"  • Script {final['script_id']} ({final['script_name']}) {status}: {final['output']}")
-
-    return jsonify({
-        "status": "success",
-        "script_id": script_id
-    }), 200
+app.register_blueprint(scripts_bp, url_prefix='/scripts')
 
 @app.route('/reset-db', methods=['POST'])
 def reset_db():
