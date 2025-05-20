@@ -1,11 +1,9 @@
-import importlib.util
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import atexit
-import signal
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 import resource  # Unix only – safe for dev and most prod servers
@@ -14,9 +12,9 @@ from dotenv import load_dotenv
 from contextlib import contextmanager
 
 from layers.broker import execute_orders
-from db.storage import _Session, DailyBar, get_script_code, UserScript, ScriptPrediction
-
-
+from db.models import  DailyBar, UserScript, ScriptPrediction
+from db.database import get_session
+from db.storage import get_script_code
 load_dotenv()
 
 # ---------------------------------------------------------------------------
@@ -46,7 +44,7 @@ atexit.register(_cleanup_processes)
 @contextmanager
 def managed_session():
     """Context manager for database sessions with proper error handling."""
-    session = _Session()
+    session = get_session()
     try:
         yield session
         session.commit()

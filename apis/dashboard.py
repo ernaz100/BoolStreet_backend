@@ -1,7 +1,8 @@
 from flask import Blueprint, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func
-from db.storage import _Session, UserScript, ScriptPrediction
+from db.models import UserScript, ScriptPrediction
+from db.database import get_session
 
 # Create blueprint
 dashboard_bp = Blueprint('dashboard', __name__)
@@ -23,7 +24,7 @@ def get_dashboard_stats():
     if not isinstance(user_id, str):
         return jsonify({"error": "Invalid token format"}), 401
 
-    with _Session() as session:
+    with get_session() as session:
         # Get all scripts for the user
         scripts = session.query(UserScript).filter(UserScript.user_id == user_id).all()
         
@@ -66,7 +67,7 @@ def get_recent_predictions():
     if not isinstance(user_id, str):
         return jsonify({"error": "Invalid token format"}), 401
 
-    with _Session() as session:
+    with get_session() as session:
         # Get predictions for all user's scripts, ordered by most recent
         predictions = (
             session.query(

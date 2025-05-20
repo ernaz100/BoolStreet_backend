@@ -10,6 +10,7 @@ from db.storage import init_db, drop_all
 from apis.auth import auth_bp
 from apis.scripts import scripts_bp
 from apis.dashboard import dashboard_bp
+from apis.market_data import market_data_bp
 
 # Load environment variables
 load_dotenv()
@@ -50,6 +51,7 @@ def unauthorized_callback(error_string):
 app.register_blueprint(auth_bp)
 app.register_blueprint(scripts_bp, url_prefix='/scripts')
 app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
+app.register_blueprint(market_data_bp)
 
 @app.route('/reset-db', methods=['POST'])
 def reset_db():
@@ -60,7 +62,7 @@ def reset_db():
 
 if __name__ == '__main__':
     # Run the app in debug mode if in development
-    #drop_all()
+    drop_all()
     init_db()
     start_scheduler()
     debug = os.getenv('FLASK_ENV') == 'development'

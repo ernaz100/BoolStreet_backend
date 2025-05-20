@@ -1,5 +1,7 @@
-from db.storage import init_db, drop_all, _Session, UserScript
+from db.storage import init_db, drop_all
+from db.models import UserScript
 from datetime import date
+from db.database import get_session
 
 def migrate():
     """Update database schema and migrate existing data."""
@@ -12,7 +14,7 @@ def migrate():
     init_db()
     
     # Migrate existing data
-    with _Session() as session:
+    with get_session() as session:
         # Update existing scripts to set start_balance
         scripts = session.query(UserScript).all()
         for script in scripts:

@@ -1,8 +1,10 @@
 from datetime import datetime
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from db.storage import save_script, _Session, UserScript
+from db.storage import save_script
+from db.models import UserScript
 from layers.executor import run_user_script
+from db.database import get_session
 
 # Create blueprint
 scripts_bp = Blueprint('scripts', __name__)
@@ -89,7 +91,7 @@ def get_user_scripts():
     if not isinstance(user_id, str):
         return jsonify({"error": "Invalid token format"}), 401
 
-    with _Session() as session:
+    with get_session() as session:
         scripts = session.query(UserScript).filter(UserScript.user_id == user_id).all()
         return jsonify({
             "scripts": [{
@@ -127,7 +129,7 @@ def activate_script(script_id):
     
     new_active_state = data['active']
 
-    with _Session() as session:
+    with get_session() as session:
         # Get the script and verify ownership
         script = session.query(UserScript).filter(
             UserScript.id == script_id,

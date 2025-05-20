@@ -7,7 +7,8 @@ from typing import List
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
-from db.storage import init_db, upsert_daily_bar
+from db.database import get_session
+from db.models import MarketData
 from layers.executor import execute_all_scripts
 
 # -------------------------------------------------------------
@@ -15,9 +16,7 @@ from layers.executor import execute_all_scripts
 # -------------------------------------------------------------
 # This script fetches live snapshot data for a small universe of
 # stocks every 15 minutes (free-tier limit: 5 requests/minute).
-# The fresh data is printed to STDOUT for now; later we can swap
-# the `print` statements for database persistence or message-bus
-# publishing.
+# The data is stored in the MarketData table for frontend display.
 # -------------------------------------------------------------
 
 # Load .env so that POLYGON_API_KEY is available when running
@@ -49,6 +48,15 @@ TICKER_URL = (
     "https://api.polygon.io/v2/aggs/ticker/{ticker}/prev"
 )
 
+# Company names mapping
+COMPANY_NAMES = {
+    "AAPL": "Apple Inc.",
+    "MSFT": "Microsoft Corporation",
+    "GOOGL": "Alphabet Inc.",
+    "AMZN": "Amazon.com Inc.",
+    "TSLA": "Tesla Inc."
+}
+
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
@@ -61,27 +69,49 @@ def fetch_prev_agg(ticker: str) -> dict:
     response.raise_for_status()
     return response.json()
 
+def calculate_percentage_change(open_price: float, close_price: float) -> float:
+    """Calculate percentage change between open and close prices."""
+    return ((close_price - open_price) / open_price) * 100
+
+def store_market_data(ticker: str, data: dict) -> None:
+    """Store market data in the database."""
+    if not data.get("results"):
+        return
+
+    r = data["results"][0]
+    db_session = get_session()
+    
+    # Calculate percentage change
+    pct_change = calculate_percentage_change(r["o"], r["c"])
+    
+    # Create new market data entry
+    market_data = MarketData(
+        symbol=ticker,
+        company_name=COMPANY_NAMES.get(ticker),
+        type='stock',
+        current_value=r["c"],
+        percentage_change=pct_change,
+        volume=r["v"],
+        timestamp=datetime.now(UTC)
+    )
+    
+    try:
+        db_session.add(market_data)
+        db_session.commit()
+        print(f"  • {ticker:5}  O:{r['o']:.2f}  H:{r['h']:.2f}  L:{r['l']:.2f}  C:{r['c']:.2f}  Vol:{r['v']}  ✅ saved")
+    except Exception as e:
+        db_session.rollback()
+        print(f"  • {ticker:5}  ⚠️  Database error: {e}")
 
 def fetch_all() -> None:
-    """Fetch all configured tickers and print the results."""
+    """Fetch all configured tickers and store the results."""
     timestamp = datetime.now(UTC).isoformat(timespec="seconds") + "Z"
     print(f"\n[INGEST] 📈  {timestamp} – Fetching {len(TICKERS)} tickers…")
 
     for ticker in TICKERS:
         try:
             data = fetch_prev_agg(ticker)
-            # Extract previous-day OHLC + volume metrics
-            if data.get("results"):
-                r = data["results"][0]
-                # Persist to database
-                upsert_daily_bar(ticker, r)
-
-                print(
-                    f"  • {ticker:5}  O:{r.get('o')}  H:{r.get('h')}  "
-                    f"L:{r.get('l')}  C:{r.get('c')}  Vol:{r.get('v')}  ✅ saved"
-                )
-            else:
-                print(f"  • {ticker:5}  ⚠️  No data returned – {data.get('status')}")
+            store_market_data(ticker, data)
         except Exception as exc:
             print(f"  • {ticker:5}  ⚠️  Error: {exc}")
 
@@ -90,7 +120,6 @@ def fetch_all() -> None:
     for result in results:
         status = "✅" if result["success"] else "❌"
         print(f"  • Script {result['script_id']} ({result['script_name']}) {status}: {result['output']}")
-
 
 # ---------------------------------------------------------------------------
 # Scheduler setup – poll every 15 minutes (free plan ⇒ ≈20 requests/hour)
