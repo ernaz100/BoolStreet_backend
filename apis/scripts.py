@@ -1,8 +1,8 @@
 from datetime import datetime
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from storage import save_script, _Session, UserScript
-from executor import run_user_script
+from db.storage import save_script, _Session, UserScript
+from layers.executor import run_user_script
 
 # Create blueprint
 scripts_bp = Blueprint('scripts', __name__)

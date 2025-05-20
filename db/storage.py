@@ -60,6 +60,22 @@ class UserScript(Base):
     created_at = Column(Date, default=date_cls.today)
     active = Column(Boolean, default=True)  # Whether the script is currently active
     balance = Column(Float, default=1000.0)  # Starting balance for the script
+    start_balance = Column(Float, default=1000.0)  # Initial balance when script was created
+
+
+class ScriptPrediction(Base):
+    """Tracks predictions and performance metrics for each script execution."""
+
+    __tablename__ = "script_predictions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    script_id = Column(Integer, nullable=False)  # Reference to UserScript
+    timestamp = Column(Date, default=date_cls.today)
+    prediction = Column(String, nullable=False)  # The prediction made by the script
+    confidence = Column(Float)  # Confidence score of the prediction (if available)
+    actual_result = Column(String)  # The actual result (if available)
+    profit_loss = Column(Float)  # Profit/loss from this prediction
+    balance_after = Column(Float)  # Balance after this prediction
 
 
 # ---------------------------------------------------------------------------

@@ -5,10 +5,11 @@ from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 from dotenv import load_dotenv
 import os
 import yfinance as yf
-from ingestion import start_scheduler
-from storage import init_db, drop_all
-from auth import auth_bp
-from scripts import scripts_bp
+from layers.ingestion import start_scheduler
+from db.storage import init_db, drop_all
+from apis.auth import auth_bp
+from apis.scripts import scripts_bp
+from apis.dashboard import dashboard_bp
 
 # Load environment variables
 load_dotenv()
@@ -17,7 +18,7 @@ load_dotenv()
 app = Flask(__name__)
 
 # Configure CORS
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Basic configuration
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-key-please-change-in-production')
@@ -25,11 +26,30 @@ app.config['JWT_TOKEN_LOCATION'] = ['headers']
 app.config['JWT_HEADER_NAME'] = 'Authorization'
 app.config['JWT_HEADER_TYPE'] = 'Bearer'
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)  # Set token expiration to 24 hours
+app.config['JWT_ERROR_MESSAGE_KEY'] = 'message'  # Customize error message key
+
+# Initialize JWT
 jwt = JWTManager(app)
+
+# Error handler for JWT errors
+@jwt.invalid_token_loader
+def invalid_token_callback(error_string):
+    return jsonify({
+        'message': 'Invalid token. Please log in again.',
+        'error': error_string
+    }), 401
+
+@jwt.unauthorized_loader
+def unauthorized_callback(error_string):
+    return jsonify({
+        'message': 'Missing token. Please log in.',
+        'error': error_string
+    }), 401
 
 # Register blueprints
 app.register_blueprint(auth_bp)
 app.register_blueprint(scripts_bp, url_prefix='/scripts')
+app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
 
 @app.route('/reset-db', methods=['POST'])
 def reset_db():
