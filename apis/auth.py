@@ -4,6 +4,9 @@ from google.auth.transport import requests
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 import os
 from dotenv import load_dotenv
+from db.database import get_session
+from db.models import User
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -13,6 +16,42 @@ auth_bp = Blueprint('auth', __name__)
 
 # Google OAuth configuration
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
+
+def get_or_create_user(session, user_id: str, email: str, name: str, picture: str) -> dict:
+    """
+    Get an existing user or create a new one if they don't exist.
+    Updates user information if they already exist.
+    Returns a dictionary with user data.
+    """
+    user = session.query(User).filter_by(id=user_id).first()
+    
+    if user:
+        # Update existing user's information
+        user.email = email
+        user.name = name
+        user.picture = picture
+        user.last_login = datetime.now()
+    else:
+        # Create new user
+        user = User(
+            id=user_id,
+            email=email,
+            name=name,
+            picture=picture,
+            created_at=datetime.now(),
+            last_login=datetime.now()
+        )
+        session.add(user)
+    
+    session.commit()
+    
+    # Return user data as dictionary before session closes
+    return {
+        'id': user.id,
+        'email': user.email,
+        'name': user.name,
+        'picture': user.picture
+    }
 
 @auth_bp.route('/auth/google', methods=['POST'])
 def google_auth():
@@ -37,16 +76,19 @@ def google_auth():
         name = idinfo.get('name', '')
         picture = idinfo.get('picture', '')
 
+        # Create or update user in database
+        session = get_session()
+        try:
+            user_data = get_or_create_user(session, user_id, email, name, picture)
+        finally:
+            session.close()
+
         # Create a JWT token with user_id as the identity
         access_token = create_access_token(identity=str(user_id))
 
         return jsonify({
             'access_token': access_token,
-            'user': {
-                'email': email,
-                'name': name,
-                'picture': picture
-            }
+            'user': user_data
         }), 200
 
     except ValueError as e:
@@ -59,7 +101,7 @@ def google_auth():
 @jwt_required()
 def get_current_user():
     """
-    Get the current user's information from the JWT token
+    Get the current user's information from the database
     Protected route that requires a valid JWT token
     Returns the user's information if the token is valid
     """
@@ -67,14 +109,25 @@ def get_current_user():
         # Get the user ID from the JWT token
         user_id = get_jwt_identity()
         
-        # TODO: Fetch user data from database using user_id
-        # For now, return a placeholder response
-        return jsonify({
-            'user_id': user_id,
-            'email': 'user@example.com',  # This should come from your database
-            'name': 'User',  # This should come from your database
-            'picture': ''  # This should come from your database
-        }), 200
+        # Fetch user data from database
+        session = get_session()
+        try:
+            user = session.query(User).filter_by(id=user_id).first()
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+
+            # Create user data dictionary before session closes
+            user_data = {
+                'id': user.id,
+                'email': user.email,
+                'name': user.name,
+                'picture': user.picture,
+                'created_at': user.created_at.isoformat(),
+                'last_login': user.last_login.isoformat()
+            }
+            return jsonify(user_data), 200
+        finally:
+            session.close()
         
     except Exception as e:
         return jsonify({'error': str(e)}), 401 

@@ -1,6 +1,6 @@
 from datetime import date as date_cls, datetime
-from sqlalchemy import Column, DateTime, Enum, String, Float, Integer, BigInteger, Date, Boolean
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, DateTime, Enum, String, Float, Integer, BigInteger, Date, Boolean, ForeignKey
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
@@ -66,3 +66,58 @@ class MarketData(Base):
 
     def __repr__(self):
         return f"<MarketData(symbol='{self.symbol}', type='{self.type}', value={self.current_value})>" 
+
+class User(Base):
+    """
+    Stores user information from Google OAuth.
+    """
+    __tablename__ = 'users'
+
+    id = Column(String(255), primary_key=True)  # Google OAuth user ID
+    email = Column(String(255), unique=True, nullable=False)
+    name = Column(String(255), nullable=False)
+    picture = Column(String(512))  # URL to user's profile picture
+    created_at = Column(DateTime, default=datetime.now)
+    last_login = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    # Relationships
+    performance = relationship("TraderPerformance", back_populates="user", uselist=False)
+
+    def __repr__(self):
+        return f"<User(id='{self.id}', name='{self.name}')>"
+
+class TraderPerformance(Base):
+    """
+    Tracks trader performance metrics for the leaderboard.
+    This includes their trading model, accuracy, profit, and win rate.
+    """
+    __tablename__ = 'trader_performance'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(255), ForeignKey('users.id'), nullable=False)  # Google OAuth user ID
+    name = Column(String(255), nullable=False)
+    model_name = Column(String(255), nullable=False)  # Name of their trading model
+    accuracy = Column(Float, nullable=False)  # Prediction accuracy as percentage
+    total_profit = Column(Float, nullable=False)  # Total profit/loss
+    win_rate = Column(Float, nullable=False)  # Win rate as percentage
+    last_updated = Column(DateTime, default=datetime.now(), onupdate=datetime.now)
+    rank = Column(Integer)  # Current rank in the leaderboard
+
+    # Relationships
+    user = relationship("User", back_populates="performance")
+
+    def __repr__(self):
+        return f"<TraderPerformance(name='{self.name}', model='{self.model_name}', profit={self.total_profit})>"
+
+    def to_dict(self):
+        """Convert the model instance to a dictionary matching the frontend structure."""
+        return {
+            "rank": self.rank,
+            "name": self.user.name if self.user else self.name,
+            "avatar": self.user.picture if self.user else self.name[:2].upper(),
+            "model": self.model_name,
+            "accuracy": f"{self.accuracy:.0f}%",
+            "profit": f"+${self.total_profit:,.0f}",
+            "winRate": f"{self.win_rate:.0f}%",
+            "isCurrentUser": False
+        } 
