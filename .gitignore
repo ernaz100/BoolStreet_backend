@@ -3,3 +3,4 @@ venv/
 boolstreet.db
 __pycache__/
 instance/
+.pytest_cache/
