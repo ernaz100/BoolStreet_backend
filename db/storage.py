@@ -10,7 +10,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
 
 
-def save_model(name: str, code: str, user_id: str) -> int:
+def save_model(name: str, code: str, user_id: str, weights: str = None, tickers: str = str) -> int:
     """Persist a user trading model and return its assigned id.
     
     Parameters
@@ -21,7 +21,10 @@ def save_model(name: str, code: str, user_id: str) -> int:
         Raw source code of the model
     user_id : str
         Google OAuth user ID of the model owner
-        
+    weights : str, optional
+        Content or path of the weights file (if provided)
+    tickers : str
+        JSON string of tickers (if provided)
     Returns
     -------
     int
@@ -33,7 +36,9 @@ def save_model(name: str, code: str, user_id: str) -> int:
             code=code,
             user_id=user_id,
             active=True,
-            balance=1000.0
+            balance=1000.0,
+            weights=weights,  # Store weights if provided
+            tickers=tickers  
         )
         session.add(model)
         session.commit()

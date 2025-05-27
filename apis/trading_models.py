@@ -27,6 +27,8 @@ def upload_model():
     - 'file': the .py source file
     - 'name': user-friendly name (optional, defaults to filename)
     - 'model_type': type of model (optional)
+    - 'weights': weights file (optional)
+    - 'tickers': tickers as JSON string
 
     Returns:
         JSON response with model id and status
@@ -41,6 +43,16 @@ def upload_model():
     model_type = request.form.get('model_type', '')
     code = f.read().decode('utf-8')
 
+    # Handle optional weights file
+    weights = None
+    if 'weights' in request.files:
+        weights_file = request.files['weights']
+        if weights_file and weights_file.filename:
+            weights = weights_file.read().decode('utf-8')  # Store as string
+
+    # Handle optional tickers (JSON string)
+    tickers = request.form.get('tickers')
+
     # quick validation – require a `def run(data):` entry point
     if "def run(" not in code:
         return jsonify({"error": "Model must expose a `run(data)` function"}), 400
@@ -50,7 +62,8 @@ def upload_model():
     if not isinstance(user_id, str):
         return jsonify({"error": "Invalid token format"}), 401
 
-    model_id = save_model(name, code, user_id)
+    # Save model with new fields
+    model_id = save_model(name, code, user_id, weights=weights, tickers=tickers)
     try:
         result, receipts = run_user_script(model_id)
         final = {
@@ -107,7 +120,8 @@ def get_user_models():
                 "name": model.name,
                 "active": model.active,
                 "created_at": model.created_at.isoformat(),
-                "balance": model.balance
+                "balance": model.balance,
+                "tickers": model.tickers
             } for model in models]
         }), 200
 

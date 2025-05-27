@@ -17,6 +17,8 @@ class UserModel(Base):
     active = Column(Boolean, default=True)  # Whether the model is currently active
     balance = Column(Float, default=1000.0)  # Starting balance for the model
     start_balance = Column(Float, default=1000.0)  # Initial balance when model was created
+    weights = Column(String, nullable=True)  # Optional: stores weights file content or path
+    tickers = Column(String, nullable=False)  # Optional: stores JSON array of tickers as string
 
 
 class ModelPrediction(Base):

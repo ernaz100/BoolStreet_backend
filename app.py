@@ -66,7 +66,7 @@ if __name__ == '__main__':
     fetch_yfinance_current("AAPL")
 
     # Run the app in debug mode if in development
-    # drop_all()
+    #drop_all()
     init_db()
     start_scheduler()
     debug = os.getenv('FLASK_ENV') == 'development'
