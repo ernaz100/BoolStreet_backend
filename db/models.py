@@ -60,6 +60,9 @@ class MarketData(Base):
     company_name = Column(String(100))  # Company name (for stocks)
     type = Column(Enum('stock', 'index', name='market_data_type'), nullable=False)  # Type of data (stock or index)
     current_value = Column(Float, nullable=False)  # Current price/value
+    open_value = Column(Float)  # Open price/value
+    high_value = Column(Float)  # High price/value
+    low_value = Column(Float)  # Low price/value
     percentage_change = Column(Float)  # Percentage change
     volume = Column(Integer)  # Trading volume (for stocks)
     timestamp = Column(DateTime, default=datetime.now(), nullable=False)  # When the data was recorded

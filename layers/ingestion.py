@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from db.database import get_session
 from db.models import MarketData
 from layers.executor import execute_all_scripts
+import yfinance as yf  # Add this import for yfinance
 
 # -------------------------------------------------------------
 # Ingestion layer for periodic market-data pulls from Polygon.io
@@ -60,7 +61,7 @@ COMPANY_NAMES = {
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
-
+ 
 def fetch_prev_agg(ticker: str) -> dict:
     """Return previous-day OHLC aggregate from Polygon's free `/prev` endpoint."""
     url = TICKER_URL.format(ticker=ticker.upper())
@@ -82,14 +83,17 @@ def store_market_data(ticker: str, data: dict) -> None:
     db_session = get_session()
     
     # Calculate percentage change
-    pct_change = calculate_percentage_change(r["o"], r["c"])
+    pct_change = calculate_percentage_change(r["o"], r["current"])
     
     # Create new market data entry
     market_data = MarketData(
         symbol=ticker,
         company_name=COMPANY_NAMES.get(ticker),
         type='stock',
-        current_value=r["c"],
+        open_value=r["o"],
+        high_value=r["h"],
+        low_value=r["l"],
+        current_value=r["current"],
         percentage_change=pct_change,
         volume=r["v"],
         timestamp=datetime.now(UTC)
@@ -110,7 +114,7 @@ def fetch_all() -> None:
 
     for ticker in TICKERS:
         try:
-            data = fetch_prev_agg(ticker)
+            data = fetch_yfinance_current(ticker)
             store_market_data(ticker, data)
         except Exception as exc:
             print(f"  • {ticker:5}  ⚠️  Error: {exc}")
@@ -120,6 +124,43 @@ def fetch_all() -> None:
     for result in results:
         status = "✅" if result["success"] else "❌"
         print(f"  • Script {result['script_id']} ({result['script_name']}) {status}: {result['output']}")
+
+def fetch_yfinance_current(ticker: str) -> dict:
+    """
+    Fetch current market data for a given ticker using yfinance's .info endpoint.
+    Returns a dictionary with structure similar to Polygon's /prev endpoint for easy integration.
+    Adds a 'current' field for the most accurate current price.
+    """
+    info = yf.Ticker(ticker).info
+    # Check for required fields and handle missing data gracefully
+    try:
+        open_price = float(info.get("open", 0))
+        high_price = float(info.get("dayHigh", 0))
+        low_price = float(info.get("dayLow", 0))
+        close_price = float(info.get("regularMarketPrice", 0))
+        volume = int(info.get("volume", 0))
+        # Use 'currentPrice' if available, else fallback to 'regularMarketPrice'
+        current_price = float(info.get("currentPrice") or info.get("regularMarketPrice", 0))
+    except Exception:
+        return {}
+
+    # If any of the main fields are zero, treat as missing data
+    if not all([open_price, high_price, low_price, close_price, volume, current_price]):
+        return {}
+
+    # Structure the result to match Polygon's /prev endpoint, with 'current' field
+    return {
+        "results": [
+            {
+                "o": open_price,   # Open
+                "h": high_price,  # High
+                "l": low_price,   # Low
+                "c": close_price, # Close (previous close or last regular market)
+                "v": volume,      # Volume
+                "current": current_price, # Most accurate current price
+            }
+        ]
+    }
 
 # ---------------------------------------------------------------------------
 # Scheduler setup – poll every 15 minutes (free plan ⇒ ≈20 requests/hour)
@@ -134,3 +175,4 @@ def start_scheduler() -> None:
     print("[INGEST] 🚀  Scheduler started (interval: 15 min).")
 
 
+           
