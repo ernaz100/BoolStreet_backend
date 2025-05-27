@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 market_data_bp = Blueprint('market_data', __name__)
 
 @market_data_bp.route('/api/market/top-movers', methods=['GET'])
-def get_market_overview():
+def get_top_movers():
     """
     Get top moving stocks
     Returns the 4 stocks with the highest percentage changes
@@ -52,27 +52,34 @@ def get_market_overview():
         }), 500
 
 @market_data_bp.route('/api/market/overview', methods=['GET'])
-def get_top_movers():
+def get_market_overview():
     """
     Get market overview data including major indices
     Returns the latest market data for major indices
     """
     try:
         db_session = get_session()
-        # Get the latest stock data
-        latest_data = db_session.query(MarketData)\
-            .order_by(MarketData.timestamp.desc())\
-            .limit(5)\
-            .all()
+        # Subquery: get the latest timestamp for each symbol
+        subq = db_session.query(
+            MarketData.symbol,
+            func.max(MarketData.timestamp).label('max_timestamp')
+        ).group_by(MarketData.symbol).subquery()
+
+        # Join MarketData with the subquery to get the most recent row for each symbol
+        latest_per_symbol = db_session.query(MarketData).join(
+            subq,
+            (MarketData.symbol == subq.c.symbol) &
+            (MarketData.timestamp == subq.c.max_timestamp)
+        ).order_by(desc(MarketData.percentage_change)).all()
         
-        if not latest_data:
+        if not latest_per_symbol:
             return jsonify({
                 'error': 'No stock data available'
             }), 404
 
         # Format the response
         top_movers = []
-        for data in latest_data:
+        for data in latest_per_symbol:
             top_movers.append({
                 'symbol': data.symbol,
                 'name': data.company_name or data.symbol,  # Use symbol if company_name is not available
