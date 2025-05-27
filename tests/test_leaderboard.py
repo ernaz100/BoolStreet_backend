@@ -20,14 +20,17 @@ class TestLeaderboardAPI:
         """
         # Add sample data to test database
         mock_db_session.add(sample_user)
+        # Associate performance with user for correct serialization
+        sample_trader_performance.user = sample_user
         mock_db_session.add(sample_trader_performance)
         mock_db_session.commit()
 
         with patch('apis.leaderboard.get_session') as mock_get_session:
-            mock_get_session.return_value.__enter__.return_value = mock_db_session
-            mock_get_session.return_value.__exit__.return_value = None
+            mock_get_session.return_value = mock_db_session
 
             response = client.get('/api/leaderboard', headers=auth_headers)
+
+            print("RESPONSE DATA:", response.data)
 
             assert response.status_code == 200
             data = json.loads(response.data)
@@ -55,8 +58,7 @@ class TestLeaderboardAPI:
         Should create initial sample data and return it.
         """
         with patch('apis.leaderboard.get_session') as mock_get_session:
-            mock_get_session.return_value.__enter__.return_value = mock_db_session
-            mock_get_session.return_value.__exit__.return_value = None
+            mock_get_session.return_value = mock_db_session
 
             response = client.get('/api/leaderboard', headers=auth_headers)
 
@@ -93,27 +95,21 @@ class TestLeaderboardAPI:
         mock_db_session.commit()
 
         with patch('apis.leaderboard.get_session') as mock_get_session:
-            mock_session = mock_get_session.return_value.__enter__.return_value
-            # Mock the performance query to return empty
-            mock_session.query.return_value.filter_by.return_value.first.return_value = None
-            # Mock the user query to return our sample user
-            mock_session.query.return_value.filter_by.return_value.first.return_value = sample_user
-            # Mock the initial data creation query
-            mock_session.query.return_value.order_by.return_value.all.return_value = []
-
+            # Use the real test session for database operations
+            mock_get_session.return_value = mock_db_session
             response = client.get('/api/leaderboard', headers=auth_headers)
 
-            assert response.status_code == 200
-            data = json.loads(response.data)
-            
-            # Check current user data
-            current_user = data['currentUser']
-            assert current_user['isCurrentUser'] is True
-            assert current_user['name'] == 'Test User'
-            assert current_user['model'] == 'Not Ranked'
-            assert current_user['accuracy'] == 'N/A'
-            assert current_user['profit'] == 'N/A'
-            assert current_user['winRate'] == 'N/A'
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        
+        # Check current user data
+        current_user = data['currentUser']
+        assert current_user['isCurrentUser'] is True
+        assert current_user['name'] == 'Test User'
+        assert current_user['model'] == 'Not Ranked'
+        assert current_user['accuracy'] == 'N/A'
+        assert current_user['profit'] == 'N/A'
+        assert current_user['winRate'] == 'N/A'
 
     def test_get_leaderboard_current_user_not_found(self, client, auth_headers, mock_db_session):
         """
@@ -121,22 +117,19 @@ class TestLeaderboardAPI:
         Should return fallback user data.
         """
         with patch('apis.leaderboard.get_session') as mock_get_session:
-            mock_session = mock_get_session.return_value.__enter__.return_value
-            # Mock all queries to return None/empty
-            mock_session.query.return_value.filter_by.return_value.first.return_value = None
-            mock_session.query.return_value.order_by.return_value.all.return_value = []
-
+            # Use the real test session for database operations
+            mock_get_session.return_value = mock_db_session
             response = client.get('/api/leaderboard', headers=auth_headers)
 
-            assert response.status_code == 200
-            data = json.loads(response.data)
-            
-            # Check fallback current user data
-            current_user = data['currentUser']
-            assert current_user['isCurrentUser'] is True
-            assert current_user['name'] == 'You'
-            assert current_user['model'] == 'Not Ranked'
-            assert current_user['avatar'] is None
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        
+        # Check fallback current user data
+        current_user = data['currentUser']
+        assert current_user['isCurrentUser'] is True
+        assert current_user['name'] == 'You'
+        assert current_user['model'] == 'Not Ranked'
+        assert current_user['avatar'] is None
 
     def test_update_ranks_function(self, mock_db_session):
         """
@@ -260,8 +253,8 @@ class TestLeaderboardAPI:
         mock_db_session.commit()
 
         with patch('apis.leaderboard.get_session') as mock_get_session:
-            mock_get_session.return_value.__enter__.return_value = mock_db_session
-            mock_get_session.return_value.__exit__.return_value = None
+            # Return the test session directly for data function
+            mock_get_session.return_value = mock_db_session
 
             result = get_leaderboard_data('test_user_123')
 
@@ -278,8 +271,8 @@ class TestLeaderboardAPI:
         from apis.leaderboard import get_leaderboard_data
 
         with patch('apis.leaderboard.get_session') as mock_get_session:
-            mock_get_session.return_value.__enter__.return_value = mock_db_session
-            mock_get_session.return_value.__exit__.return_value = None
+            # Return the test session directly for data function
+            mock_get_session.return_value = mock_db_session
 
             result = get_leaderboard_data()
 

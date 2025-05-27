@@ -7,6 +7,7 @@ import pytest
 import json
 from unittest.mock import patch
 from datetime import date
+from collections import namedtuple
 
 
 @pytest.mark.api
@@ -87,7 +88,17 @@ class TestDashboardAPI:
         mock_db_session.commit()
 
         # Mock the query to return our test data
-        mock_query_result = [(sample_script_prediction, 'Test Strategy')]
+        MockPredictionRow = namedtuple('MockPredictionRow', ['prediction', 'script_name', 'confidence', 'timestamp', 'profit_loss'])
+
+        mock_query_result = [
+            MockPredictionRow(
+                script_name='Test Strategy',
+                prediction=sample_script_prediction.prediction,
+                confidence=sample_script_prediction.confidence,
+                timestamp=sample_script_prediction.timestamp,
+                profit_loss=sample_script_prediction.profit_loss
+            )
+        ]
         
         with patch('apis.dashboard.get_session') as mock_get_session:
             mock_session = mock_get_session.return_value.__enter__.return_value

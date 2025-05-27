@@ -30,7 +30,7 @@ class TestMarketDataAPI:
                 type='index',
                 current_value=450.75,
                 percentage_change=1.25,
-                timestamp=datetime.now()
+                timestamp=datetime(2024, 3, 15, 9, 30, 0)  # Market open time
             ),
             MarketData(
                 id=2,
@@ -39,7 +39,7 @@ class TestMarketDataAPI:
                 type='index',
                 current_value=375.50,
                 percentage_change=-0.75,
-                timestamp=datetime.now()
+                timestamp=datetime(2024, 3, 15, 9, 35, 0)  # 5 minutes later
             ),
             MarketData(
                 id=3,
@@ -48,7 +48,7 @@ class TestMarketDataAPI:
                 type='index',
                 current_value=340.25,
                 percentage_change=0.5,
-                timestamp=datetime.now()
+                timestamp=datetime(2024, 3, 15, 9, 40, 0)  # 10 minutes later
             )
         ]
         
@@ -66,7 +66,7 @@ class TestMarketDataAPI:
             assert len(data) == 3
             
             # Check first index (SPY)
-            spy_data = data[0]
+            spy_data = data[2]
             assert spy_data['name'] == 'S&P 500'
             assert spy_data['value'] == '$450.75'
             assert spy_data['change'] == '+1.2%'
@@ -142,7 +142,7 @@ class TestMarketDataAPI:
                 current_value=175.25,
                 percentage_change=3.2,
                 volume=50000000,
-                timestamp=datetime.now()
+                timestamp=datetime(2024, 3, 15, 9, 30, 0)  # Market open
             ),
             MarketData(
                 id=2,
@@ -152,7 +152,7 @@ class TestMarketDataAPI:
                 current_value=420.75,
                 percentage_change=-1.5,
                 volume=25000000,
-                timestamp=datetime.now()
+                timestamp=datetime(2024, 3, 15, 10, 15, 30)  # 45 minutes later
             ),
             MarketData(
                 id=3,
@@ -162,7 +162,7 @@ class TestMarketDataAPI:
                 current_value=2850.50,
                 percentage_change=2.8,
                 volume=15000000,
-                timestamp=datetime.now()
+                timestamp=datetime(2024, 3, 15, 11, 0, 0)  # 90 minutes later
             )
         ]
         
@@ -180,7 +180,7 @@ class TestMarketDataAPI:
             assert len(data) == 3
             
             # Check AAPL data
-            aapl_data = data[0]
+            aapl_data = data[2]
             assert aapl_data['symbol'] == 'AAPL'
             assert aapl_data['name'] == 'Apple Inc.'
             assert aapl_data['price'] == '$175.25'
@@ -318,7 +318,7 @@ class TestMarketDataAPI:
                 type='index',
                 current_value=100.0,
                 percentage_change=0.0,
-                timestamp=datetime.now()
+                timestamp=datetime(2024, 3, 15, 9, 30, 0)  # Market open
             ),
             MarketData(
                 id=2,
@@ -327,7 +327,7 @@ class TestMarketDataAPI:
                 type='index',
                 current_value=100.0,
                 percentage_change=2.5,
-                timestamp=datetime.now()
+                timestamp=datetime(2024, 3, 15, 10, 30, 0)  # Market open
             ),
             MarketData(
                 id=3,
@@ -336,7 +336,7 @@ class TestMarketDataAPI:
                 type='index',
                 current_value=100.0,
                 percentage_change=-1.8,
-                timestamp=datetime.now()
+                timestamp=datetime(2024, 3, 15, 11, 30, 0)  # Market open
             )
         ]
         
@@ -354,11 +354,11 @@ class TestMarketDataAPI:
             assert len(data) == 3
             
             # Check formatting
-            assert data[0]['change'] == '+0.0%'  # Zero with plus
-            assert data[0]['trend'] == 'up'
+            assert data[2]['change'] == '+0.0%'  # Zero with plus
+            assert data[2]['trend'] == 'up'
             
             assert data[1]['change'] == '+2.5%'  # Positive with plus
             assert data[1]['trend'] == 'up'
             
-            assert data[2]['change'] == '-1.8%'  # Negative without plus
-            assert data[2]['trend'] == 'down' 
+            assert data[0]['change'] == '-1.8%'  # Negative without plus
+            assert data[0]['trend'] == 'down' 

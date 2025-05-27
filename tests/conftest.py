@@ -233,6 +233,7 @@ def mock_script_executor():
         {'action': 'buy', 'symbol': 'AAPL', 'quantity': 10, 'price': 150.0}
     ]
     
-    with patch('layers.executor.run_user_script') as mock_run:
+    # Patch the run_user_script name in the scripts API module so upload_script picks it up
+    with patch('apis.scripts.run_user_script') as mock_run:
         mock_run.return_value = (mock_result, mock_receipts)
         yield mock_run 

@@ -262,7 +262,7 @@ def run(data):
         
         assert response.status_code == 401
 
-    def test_activate_script_wrong_user(self, client, auth_headers, mock_db_session):
+    def test_activate_script_wrong_user(self, client, auth_headers, mock_db_session, sample_user_script):
         """
         Test activating a script belonging to another user.
         Should return 404 Not Found (security measure).
