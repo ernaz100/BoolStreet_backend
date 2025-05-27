@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func
-from db.models import UserScript, ScriptPrediction
+from db.db_models import UserModel, ModelPrediction
 from db.database import get_session
 
 # Create blueprint
@@ -15,36 +15,36 @@ def get_dashboard_stats():
     
     Returns:
         JSON response containing:
-        - total_scripts: Total number of scripts
-        - active_scripts: Number of active scripts
-        - total_balance: Sum of all script balances
-        - net_profit: Total profit/loss across all scripts
+        - total_models: Total number of trading models
+        - active_models: Number of active trading models
+        - total_balance: Sum of all model balances
+        - net_profit: Total profit/loss across all models
     """
     user_id = get_jwt_identity()
     if not isinstance(user_id, str):
         return jsonify({"error": "Invalid token format"}), 401
 
     with get_session() as session:
-        # Get all scripts for the user
-        scripts = session.query(UserScript).filter(UserScript.user_id == user_id).all()
+        # Get all trading models for the user
+        models = session.query(UserModel).filter(UserModel.user_id == user_id).all()
         
-        # If no scripts found, return default values
-        if not scripts:
+        # If no models found, return default values
+        if not models:
             return jsonify({
-                "total_scripts": 0,
-                "active_scripts": 0,
+                "total_models": 0,
+                "active_models": 0,
                 "total_balance": 0.0,
                 "net_profit": 0.0
             }), 200
 
-        total_scripts = len(scripts)
-        active_scripts = sum(1 for script in scripts if script.active)
-        total_balance = sum(script.balance for script in scripts)
-        net_profit = sum(script.balance - script.start_balance for script in scripts)
+        total_models = len(models)
+        active_models = sum(1 for model in models if model.active)
+        total_balance = sum(model.balance for model in models)
+        net_profit = sum(model.balance - model.start_balance for model in models)
 
         return jsonify({
-            "total_scripts": total_scripts,
-            "active_scripts": active_scripts,
+            "total_models": total_models,
+            "active_models": active_models,
             "total_balance": total_balance,
             "net_profit": net_profit
         }), 200
@@ -53,11 +53,11 @@ def get_dashboard_stats():
 @jwt_required()
 def get_recent_predictions():
     """
-    Get recent predictions for all user scripts.
+    Get recent predictions for all user trading models.
     
     Returns:
         JSON response containing a list of recent predictions with:
-        - script_name: Name of the script
+        - model_name: Name of the trading model
         - prediction: The prediction made
         - confidence: Confidence score
         - timestamp: When the prediction was made
@@ -68,15 +68,15 @@ def get_recent_predictions():
         return jsonify({"error": "Invalid token format"}), 401
 
     with get_session() as session:
-        # Get predictions for all user's scripts, ordered by most recent
+        # Get predictions for all user's trading models, ordered by most recent
         predictions = (
             session.query(
-                ScriptPrediction,
-                UserScript.name.label('script_name')
+                ModelPrediction,
+                UserModel.name.label('model_name')
             )
-            .join(UserScript, ScriptPrediction.script_id == UserScript.id)
-            .filter(UserScript.user_id == user_id)
-            .order_by(ScriptPrediction.timestamp.desc())
+            .join(UserModel, ModelPrediction.model_id == UserModel.id)
+            .filter(UserModel.user_id == user_id)
+            .order_by(ModelPrediction.timestamp.desc())
             .limit(10)  # Get last 10 predictions
             .all()
         )
@@ -89,7 +89,7 @@ def get_recent_predictions():
 
         return jsonify({
             "predictions": [{
-                "script_name": pred.script_name,
+                "model_name": pred.model_name,
                 "prediction": pred.prediction,
                 "confidence": pred.confidence,
                 "timestamp": pred.timestamp.isoformat(),

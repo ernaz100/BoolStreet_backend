@@ -19,7 +19,7 @@ class TestMarketDataAPI:
         Test getting market overview with existing data.
         Should return formatted market indices data.
         """
-        from db.models import MarketData
+        from backend.db.db_models import MarketData
         
         # Create sample market data
         indices_data = [
@@ -99,7 +99,7 @@ class TestMarketDataAPI:
         Test market overview when index_name is not available.
         Should use symbol as fallback for name.
         """
-        from db.models import MarketData
+        from backend.db.db_models import MarketData
         
         # Create data without index_name
         market_data = MarketData(
@@ -130,7 +130,7 @@ class TestMarketDataAPI:
         Test getting top movers with existing stock data.
         Should return formatted stock data with volume.
         """
-        from db.models import MarketData
+        from backend.db.db_models import MarketData
         
         # Create sample stock data
         stocks_data = [
@@ -215,7 +215,7 @@ class TestMarketDataAPI:
         Test top movers when volume data is not available.
         Should show 'N/A' for volume.
         """
-        from db.models import MarketData
+        from backend.db.db_models import MarketData
         
         # Create stock data without volume
         stock_data = MarketData(
@@ -247,7 +247,7 @@ class TestMarketDataAPI:
         Test top movers when company_name is not available.
         Should use symbol as fallback for name.
         """
-        from db.models import MarketData
+        from backend.db.db_models import MarketData
         
         # Create stock data without company name
         stock_data = MarketData(
@@ -307,7 +307,7 @@ class TestMarketDataAPI:
         Test that percentage changes are properly formatted.
         Should handle zero, positive, and negative values correctly.
         """
-        from db.models import MarketData
+        from backend.db.db_models import MarketData
         
         # Create data with different percentage changes
         test_data = [

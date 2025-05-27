@@ -137,7 +137,7 @@ class TestLeaderboardAPI:
         Should properly rank traders by total profit.
         """
         from apis.leaderboard import update_ranks
-        from db.models import TraderPerformance
+        from backend.db.db_models import TraderPerformance
         
         # Create traders with different profits
         traders = [

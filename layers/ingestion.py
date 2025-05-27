@@ -8,8 +8,7 @@ import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 from db.database import get_session
-from db.models import MarketData
-from layers.executor import execute_all_scripts
+from db.db_models import MarketData
 import yfinance as yf  # Add this import for yfinance
 
 # -------------------------------------------------------------
@@ -118,12 +117,6 @@ def fetch_all() -> None:
             store_market_data(ticker, data)
         except Exception as exc:
             print(f"  • {ticker:5}  ⚠️  Error: {exc}")
-
-    # Execute all registered scripts
-    results = execute_all_scripts()
-    for result in results:
-        status = "✅" if result["success"] else "❌"
-        print(f"  • Script {result['script_id']} ({result['script_name']}) {status}: {result['output']}")
 
 def fetch_yfinance_current(ticker: str) -> dict:
     """

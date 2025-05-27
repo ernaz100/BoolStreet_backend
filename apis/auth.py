@@ -5,7 +5,7 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 import os
 from dotenv import load_dotenv
 from db.database import get_session
-from db.models import User
+from db.db_models import User
 from datetime import datetime
 
 # Load environment variables

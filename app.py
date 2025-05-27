@@ -5,15 +5,15 @@ from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 from dotenv import load_dotenv
 import os
 import yfinance as yf
-from layers.ingestion import start_scheduler
+from layers.ingestion import fetch_yfinance_current, start_scheduler
 from db.storage import init_db, drop_all
 from apis.auth import auth_bp
-from apis.scripts import scripts_bp
+from apis.trading_models import models_bp
 from apis.dashboard import dashboard_bp
 from apis.market_data import market_data_bp
 from apis.leaderboard import leaderboard_bp
 
-# Load environment variables
+# Load environment variables        
 load_dotenv()
 
 # Initialize Flask app
@@ -50,7 +50,7 @@ def unauthorized_callback(error_string):
 
 # Register blueprints
 app.register_blueprint(auth_bp)
-app.register_blueprint(scripts_bp, url_prefix='/scripts')
+app.register_blueprint(models_bp, url_prefix='/models')
 app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
 app.register_blueprint(market_data_bp)
 app.register_blueprint(leaderboard_bp)
@@ -63,8 +63,10 @@ def reset_db():
     return jsonify({"status": "Database reset complete"}), 200
 
 if __name__ == '__main__':
+    fetch_yfinance_current("AAPL")
+
     # Run the app in debug mode if in development
-    #drop_all()
+    drop_all()
     init_db()
     start_scheduler()
     debug = os.getenv('FLASK_ENV') == 'development'

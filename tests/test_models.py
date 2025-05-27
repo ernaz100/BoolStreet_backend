@@ -17,7 +17,7 @@ class TestDatabaseModels:
         Test User model creation and basic functionality.
         Should create user with all required fields.
         """
-        from db.models import User
+        from backend.db.db_models import User
         
         user = User(
             id='test_user_123',
@@ -42,13 +42,13 @@ class TestDatabaseModels:
     def test_user_script_model_creation(self, test_db):
         """
         Test UserScript model creation and fields.
-        Should create script with all required fields and defaults.
+        Should create model with all required fields and defaults.
         """
-        from db.models import UserScript
+        from backend.db.db_models import UserScript
         
-        script = UserScript(
+        model = UserScript(
             user_id='test_user_123',
-            name='Test Strategy',
+            name='Test Model',
             code='def run(data): return {"action": "buy"}',
             created_at=date.today(),
             active=True,
@@ -56,47 +56,47 @@ class TestDatabaseModels:
             start_balance=1000.0
         )
         
-        test_db.add(script)
+        test_db.add(model)
         test_db.commit()
         
         # Retrieve and verify
-        retrieved_script = test_db.query(UserScript).first()
-        assert retrieved_script is not None
-        assert retrieved_script.user_id == 'test_user_123'
-        assert retrieved_script.name == 'Test Strategy'
-        assert retrieved_script.active is True
-        assert retrieved_script.balance == 1000.0
-        assert retrieved_script.start_balance == 1000.0
+        retrieved_model = test_db.query(UserScript).first()
+        assert retrieved_model is not None
+        assert retrieved_model.user_id == 'test_user_123'
+        assert retrieved_model.name == 'Test Model'
+        assert retrieved_model.active is True
+        assert retrieved_model.balance == 1000.0
+        assert retrieved_model.start_balance == 1000.0
 
     def test_user_script_defaults(self, test_db):
         """
         Test UserScript model default values.
         Should set correct defaults for optional fields.
         """
-        from db.models import UserScript
+        from backend.db.db_models import UserScript
         
-        # Create script with minimal required fields
-        script = UserScript(
+        # Create model with minimal required fields
+        model = UserScript(
             user_id='test_user_123',
-            name='Minimal Script',
+            name='Minimal Model',
             code='def run(data): pass'
         )
         
-        test_db.add(script)
+        test_db.add(model)
         test_db.commit()
         
         # Check defaults
-        assert script.created_at == date.today()
-        assert script.active is True
-        assert script.balance == 1000.0
-        assert script.start_balance == 1000.0
+        assert model.created_at == date.today()
+        assert model.active is True
+        assert model.balance == 1000.0
+        assert model.start_balance == 1000.0
 
     def test_script_prediction_model_creation(self, test_db):
         """
         Test ScriptPrediction model creation.
         Should create prediction with all fields.
         """
-        from db.models import ScriptPrediction
+        from backend.db.db_models import ScriptPrediction
         
         prediction = ScriptPrediction(
             script_id=1,
@@ -124,7 +124,7 @@ class TestDatabaseModels:
         Test MarketData model creation with different types.
         Should create both stock and index data.
         """
-        from db.models import MarketData
+        from backend.db.db_models import MarketData
         
         # Create stock data
         stock_data = MarketData(
@@ -167,7 +167,7 @@ class TestDatabaseModels:
         Test MarketData __repr__ method.
         Should return formatted string representation.
         """
-        from db.models import MarketData
+        from backend.db.db_models import MarketData
         
         market_data = MarketData(
             symbol='AAPL',
@@ -187,7 +187,7 @@ class TestDatabaseModels:
         Test TraderPerformance model creation.
         Should create performance record with all fields.
         """
-        from db.models import TraderPerformance
+        from backend.db.db_models import TraderPerformance
         
         performance = TraderPerformance(
             user_id='test_user_123',
@@ -218,7 +218,7 @@ class TestDatabaseModels:
         Test TraderPerformance __repr__ method.
         Should return formatted string representation.
         """
-        from db.models import TraderPerformance
+        from backend.db.db_models import TraderPerformance
         
         performance = TraderPerformance(
             user_id='test_user_123',
@@ -240,7 +240,7 @@ class TestDatabaseModels:
         Test TraderPerformance to_dict method with user relationship.
         Should use user data when available.
         """
-        from db.models import TraderPerformance, User
+        from backend.db.db_models import TraderPerformance, User
         
         # Create user
         user = User(
@@ -282,7 +282,7 @@ class TestDatabaseModels:
         Test TraderPerformance to_dict method without user relationship.
         Should use trader's own name and create initials avatar.
         """
-        from db.models import TraderPerformance
+        from backend.db.db_models import TraderPerformance
         
         performance = TraderPerformance(
             user_id='test_user_123',
@@ -307,7 +307,7 @@ class TestDatabaseModels:
         Test relationship between User and TraderPerformance models.
         Should properly link user and performance records.
         """
-        from db.models import User, TraderPerformance
+        from backend.db.db_models import User, TraderPerformance
         
         # Create user
         user = User(
@@ -346,7 +346,7 @@ class TestDatabaseModels:
         Test DailyBar model creation.
         Should create OHLCV data with composite primary key.
         """
-        from db.models import DailyBar
+        from backend.db.db_models import DailyBar
         
         bar = DailyBar(
             ticker='AAPL',
@@ -377,7 +377,7 @@ class TestDatabaseModels:
         Test DailyBar composite primary key constraint.
         Should allow same ticker on different dates but not duplicate ticker-date pairs.
         """
-        from db.models import DailyBar
+        from backend.db.db_models import DailyBar
         from datetime import timedelta
         
         # Create first bar
@@ -415,7 +415,7 @@ class TestDatabaseModels:
         Test model field defaults and nullable constraints.
         Should handle optional fields correctly.
         """
-        from db.models import MarketData, ScriptPrediction
+        from backend.db.db_models import MarketData, ScriptPrediction
         
         # Test MarketData with minimal required fields
         market_data = MarketData(

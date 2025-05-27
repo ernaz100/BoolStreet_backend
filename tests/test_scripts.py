@@ -12,8 +12,8 @@ from datetime import date
 
 @pytest.mark.api
 @pytest.mark.integration
-class TestScriptsAPI:
-    """Test class for scripts API endpoints."""
+class TestTradingModelsAPI:
+    """Test class for trading_models API endpoints."""
 
     def test_upload_script_success(self, client, test_app, auth_headers, mock_script_executor, mock_db_session):
         """
@@ -21,7 +21,7 @@ class TestScriptsAPI:
         Should save script and execute it.
         """
         # Mock the save_script function
-        with patch('apis.scripts.save_script') as mock_save:
+        with patch('apis.trading_models.save_script') as mock_save:
             mock_save.return_value = 1
             
             # Create a test file
@@ -37,7 +37,7 @@ def run(data):
                 'model_type': 'ML Model'
             }
             
-            response = client.post('/scripts/upload', 
+            response = client.post('/models/upload', 
                                  data=data,
                                  headers=auth_headers,
                                  content_type='multipart/form-data')
@@ -52,7 +52,7 @@ def run(data):
         Test script upload without file.
         Should return 400 Bad Request.
         """
-        response = client.post('/scripts/upload', 
+        response = client.post('/models/upload', 
                              data={},
                              headers=auth_headers,
                              content_type='multipart/form-data')
@@ -71,7 +71,7 @@ def run(data):
             'file': (io.BytesIO(b''), '')
         }
         
-        response = client.post('/scripts/upload', 
+        response = client.post('/models/upload', 
                              data=data,
                              headers=auth_headers,
                              content_type='multipart/form-data')
@@ -96,7 +96,7 @@ def invalid_function():
             'name': 'Invalid Script'
         }
         
-        response = client.post('/scripts/upload', 
+        response = client.post('/models/upload', 
                              data=data,
                              headers=auth_headers,
                              content_type='multipart/form-data')
@@ -111,10 +111,10 @@ def invalid_function():
         Test script upload when execution fails.
         Should save script but return execution error.
         """
-        with patch('apis.scripts.save_script') as mock_save:
+        with patch('apis.trading_models.save_script') as mock_save:
             mock_save.return_value = 1
             
-            with patch('apis.scripts.run_user_script') as mock_run:
+            with patch('apis.trading_models.run_user_script') as mock_run:
                 mock_run.side_effect = Exception('Execution failed')
                 
                 script_content = '''
@@ -127,7 +127,7 @@ def run(data):
                     'name': 'Error Script'
                 }
                 
-                response = client.post('/scripts/upload', 
+                response = client.post('/models/upload', 
                                      data=data,
                                      headers=auth_headers,
                                      content_type='multipart/form-data')
@@ -146,11 +146,11 @@ def run(data):
         mock_db_session.add(sample_user_script)
         mock_db_session.commit()
 
-        with patch('apis.scripts.get_session') as mock_get_session:
+        with patch('apis.trading_models.get_session') as mock_get_session:
             mock_get_session.return_value.__enter__.return_value = mock_db_session
             mock_get_session.return_value.__exit__.return_value = None
 
-            response = client.get('/scripts/list', headers=auth_headers)
+            response = client.get('/models/list', headers=auth_headers)
 
             assert response.status_code == 200
             data = json.loads(response.data)
@@ -165,11 +165,11 @@ def run(data):
         Test getting list of user scripts when user has no scripts.
         Should return empty list.
         """
-        with patch('apis.scripts.get_session') as mock_get_session:
+        with patch('apis.trading_models.get_session') as mock_get_session:
             mock_get_session.return_value.__enter__.return_value = mock_db_session
             mock_get_session.return_value.__exit__.return_value = None
 
-            response = client.get('/scripts/list', headers=auth_headers)
+            response = client.get('/models/list', headers=auth_headers)
 
             assert response.status_code == 200
             data = json.loads(response.data)
@@ -181,7 +181,7 @@ def run(data):
         Test getting list of user scripts without authentication.
         Should return 401 Unauthorized.
         """
-        response = client.get('/scripts/list')
+        response = client.get('/models/list')
         assert response.status_code == 401
 
     def test_activate_script_success(self, client, auth_headers, mock_db_session, sample_user_script):
@@ -193,12 +193,12 @@ def run(data):
         mock_db_session.add(sample_user_script)
         mock_db_session.commit()
 
-        with patch('apis.scripts.get_session') as mock_get_session:
+        with patch('apis.trading_models.get_session') as mock_get_session:
             mock_get_session.return_value.__enter__.return_value = mock_db_session
             mock_get_session.return_value.__exit__.return_value = None
 
             # Test deactivating script
-            response = client.post('/scripts/1/activate', 
+            response = client.post('/models/1/activate', 
                                  json={'active': False},
                                  headers=auth_headers,
                                  content_type='application/json')
@@ -214,11 +214,11 @@ def run(data):
         Test activating a script that doesn't exist.
         Should return 404 Not Found.
         """
-        with patch('apis.scripts.get_session') as mock_get_session:
+        with patch('apis.trading_models.get_session') as mock_get_session:
             mock_get_session.return_value.__enter__.return_value = mock_db_session
             mock_get_session.return_value.__exit__.return_value = None
 
-            response = client.post('/scripts/999/activate', 
+            response = client.post('/models/999/activate', 
                                  json={'active': True},
                                  headers=auth_headers,
                                  content_type='application/json')
@@ -237,11 +237,11 @@ def run(data):
         mock_db_session.add(sample_user_script)
         mock_db_session.commit()
 
-        with patch('apis.scripts.get_session') as mock_get_session:
+        with patch('apis.trading_models.get_session') as mock_get_session:
             mock_get_session.return_value.__enter__.return_value = mock_db_session
             mock_get_session.return_value.__exit__.return_value = None
 
-            response = client.post('/scripts/1/activate', 
+            response = client.post('/models/1/activate', 
                                  json={},
                                  headers=auth_headers,
                                  content_type='application/json')
@@ -256,7 +256,7 @@ def run(data):
         Test activating a script without authentication.
         Should return 401 Unauthorized.
         """
-        response = client.post('/scripts/1/activate', 
+        response = client.post('/models/1/activate', 
                              json={'active': True},
                              content_type='application/json')
         
@@ -274,11 +274,11 @@ def run(data):
         mock_db_session.add(different_user_script)
         mock_db_session.commit()
 
-        with patch('apis.scripts.get_session') as mock_get_session:
+        with patch('apis.trading_models.get_session') as mock_get_session:
             mock_get_session.return_value.__enter__.return_value = mock_db_session
             mock_get_session.return_value.__exit__.return_value = None
 
-            response = client.post('/scripts/1/activate', 
+            response = client.post('/models/1/activate', 
                                  json={'active': True},
                                  headers=auth_headers,
                                  content_type='application/json')

@@ -1,8 +1,5 @@
-from datetime import datetime, timezone
-from typing import Dict
-
 from db.database import engine, get_session
-from db.models import Base, DailyBar, UserScript
+from db.db_models import Base, UserModel
 
 # ---------------------------------------------------------------------------
 # Public helper functions
@@ -13,71 +10,42 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
 
 
-def upsert_daily_bar(ticker: str, bar: Dict[str, float | int]) -> None:
-    """Insert or update a daily bar.
-
-    Parameters
-    ----------
-    ticker : str
-        Symbol, e.g. "AAPL".
-    bar : dict
-        Raw aggregate result from Polygon: keys must include
-        't' (epoch-ms), 'o', 'h', 'l', 'c', 'v'.
-    """
-    trading_day = datetime.fromtimestamp(bar["t"] / 1000, tz=timezone.utc).date()
-
-    with get_session() as session:
-        obj = session.get(DailyBar, {"ticker": ticker, "date": trading_day})
-
-        if obj is None:
-            obj = DailyBar(ticker=ticker, date=trading_day)
-
-        obj.open = bar.get("o")
-        obj.high = bar.get("h")
-        obj.low = bar.get("l")
-        obj.close = bar.get("c")
-        obj.volume = bar.get("v")
-
-        session.merge(obj)  # ensures insert-or-update semantics
-        session.commit()
-
-
-def save_script(name: str, code: str, user_id: str) -> int:
-    """Persist a user script and return its assigned id.
+def save_model(name: str, code: str, user_id: str) -> int:
+    """Persist a user trading model and return its assigned id.
     
     Parameters
     ----------
     name : str
-        User-friendly name for the script
+        User-friendly name for the model
     code : str
-        Raw source code of the script
+        Raw source code of the model
     user_id : str
-        Google OAuth user ID of the script owner
+        Google OAuth user ID of the model owner
         
     Returns
     -------
     int
-        The assigned script ID
+        The assigned model ID
     """
     with get_session() as session:
-        script = UserScript(
+        model = UserModel(
             name=name,
             code=code,
             user_id=user_id,
             active=True,
             balance=1000.0
         )
-        session.add(script)
+        session.add(model)
         session.commit()
-        session.refresh(script)
-        return script.id
+        session.refresh(model)
+        return model.id
 
 
-def get_script_code(script_id: int) -> str | None:
-    """Return the raw source code for the given script id (or None)."""
+def get_model_code(model_id: int) -> str | None:
+    """Return the raw source code for the given trading model id (or None)."""
     with get_session() as session:
-        script = session.get(UserScript, script_id)
-        return script.code if script else None
+        model = session.get(UserModel, model_id)
+        return model.code if model else None
 
 
 def drop_all() -> None:

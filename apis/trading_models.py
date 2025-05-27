@@ -1,19 +1,27 @@
 from datetime import datetime
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from db.storage import save_script
-from db.models import UserScript
-from layers.executor import run_user_script
+from db.storage import save_model
+from db.db_models import UserModel
 from db.database import get_session
+from typing import Tuple, Dict, Any, List
 
 # Create blueprint
-scripts_bp = Blueprint('scripts', __name__)
+models_bp = Blueprint('models', __name__)
+def run_user_script(model_id: int) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """Execute the given user script and return its JSON output."""
+    return {
+        "started_at": datetime.now().isoformat(),
+        "ended_at": datetime.now().isoformat(),
+        "duration_secs": 0.0,
+        "output": "Dummy execution completed"
+    }, []
 
-@scripts_bp.route('/upload', methods=['POST'])
+@models_bp.route('/upload', methods=['POST'])
 @jwt_required()
-def upload_script():
+def upload_model():
     """
-    Upload a user strategy script.
+    Upload a user trading model.
 
     Expects multipart/form-data with:
     - 'file': the .py source file
@@ -21,7 +29,7 @@ def upload_script():
     - 'model_type': type of model (optional)
 
     Returns:
-        JSON response with script id and status
+        JSON response with model id and status
     """
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
@@ -35,19 +43,19 @@ def upload_script():
 
     # quick validation – require a `def run(data):` entry point
     if "def run(" not in code:
-        return jsonify({"error": "Script must expose a `run(data)` function"}), 400
+        return jsonify({"error": "Model must expose a `run(data)` function"}), 400
 
     # Get user ID from JWT token
     user_id = get_jwt_identity()
     if not isinstance(user_id, str):
         return jsonify({"error": "Invalid token format"}), 401
 
-    script_id = save_script(name, code, user_id)
+    model_id = save_model(name, code, user_id)
     try:
-        result, receipts = run_user_script(script_id)
+        result, receipts = run_user_script(model_id)
         final = {
-            "script_id": script_id,
-            "script_name": name,
+            "model_id": model_id,
+            "model_name": name,
             "started_at": result["started_at"],
             "ended_at": result["ended_at"],
             "duration_secs": result["duration_secs"],
@@ -57,8 +65,8 @@ def upload_script():
         }
     except Exception as exc:
         final = {
-            "script_id": script_id,
-            "script_name": name,
+            "model_id": model_id,
+            "model_name": name,
             "started_at": datetime.now().isoformat(),
             "ended_at": datetime.now().isoformat(),
             "duration_secs": 0,
@@ -66,24 +74,24 @@ def upload_script():
             "success": False
         }
     status = "✅" if final["success"] else "❌"
-    print(f"  • Script {final['script_id']} ({final['script_name']}) {status}: {final['output']}")
+    print(f"  • Model {final['model_id']} ({final['model_name']}) {status}: {final['output']}")
 
     return jsonify({
         "status": "success",
-        "script_id": script_id
+        "model_id": model_id
     }), 200
 
-@scripts_bp.route('/list', methods=['GET'])
+@models_bp.route('/list', methods=['GET'])
 @jwt_required()
-def get_user_scripts():
+def get_user_models():
     """
-    Fetch all scripts for the currently logged in user.
+    Fetch all trading models for the currently logged in user.
     
     Returns:
-        JSON response with list of user scripts containing:
-        - id: script ID
-        - name: script name
-        - active: whether script is active
+        JSON response with list of user models containing:
+        - id: model ID
+        - name: model name
+        - active: whether model is active
         - created_at: creation date
         - balance: current balance
     """
@@ -92,31 +100,31 @@ def get_user_scripts():
         return jsonify({"error": "Invalid token format"}), 401
 
     with get_session() as session:
-        scripts = session.query(UserScript).filter(UserScript.user_id == user_id).all()
+        models = session.query(UserModel).filter(UserModel.user_id == user_id).all()
         return jsonify({
-            "scripts": [{
-                "id": script.id,
-                "name": script.name,
-                "active": script.active,
-                "created_at": script.created_at.isoformat(),
-                "balance": script.balance
-            } for script in scripts]
+            "models": [{
+                "id": model.id,
+                "name": model.name,
+                "active": model.active,
+                "created_at": model.created_at.isoformat(),
+                "balance": model.balance
+            } for model in models]
         }), 200
 
-@scripts_bp.route('/<int:script_id>/activate', methods=['POST'])
+@models_bp.route('/<int:model_id>/activate', methods=['POST'])
 @jwt_required()
-def activate_script(script_id):
+def activate_model(model_id):
     """
-    Activate or deactivate a user's script.
+    Activate or deactivate a user's trading model.
     
     Args:
-        script_id: ID of the script to activate/deactivate
+        model_id: ID of the model to activate/deactivate
         
     Request Body:
         - active: boolean indicating whether to activate or deactivate
         
     Returns:
-        JSON response with updated list of user scripts
+        JSON response with updated list of user models
     """
     user_id = get_jwt_identity()
     if not isinstance(user_id, str):
@@ -130,27 +138,27 @@ def activate_script(script_id):
     new_active_state = data['active']
 
     with get_session() as session:
-        # Get the script and verify ownership
-        script = session.query(UserScript).filter(
-            UserScript.id == script_id,
-            UserScript.user_id == user_id
+        # Get the model and verify ownership
+        model = session.query(UserModel).filter(
+            UserModel.id == model_id,
+            UserModel.user_id == user_id
         ).first()
         
-        if not script:
-            return jsonify({"error": "Script not found"}), 404
+        if not model:
+            return jsonify({"error": "Model not found"}), 404
 
         # Update the active state
-        script.active = new_active_state
+        model.active = new_active_state
         session.commit()
 
-        # Return updated list of scripts
-        scripts = session.query(UserScript).filter(UserScript.user_id == user_id).all()
+        # Return updated list of models
+        models = session.query(UserModel).filter(UserModel.user_id == user_id).all()
         return jsonify({
-            "scripts": [{
-                "id": script.id,
-                "name": script.name,
-                "active": script.active,
-                "created_at": script.created_at.isoformat(),
-                "balance": script.balance
-            } for script in scripts]
+            "models": [{
+                "id": model.id,
+                "name": model.name,
+                "active": model.active,
+                "created_at": model.created_at.isoformat(),
+                "balance": model.balance
+            } for model in models]
         }), 200 

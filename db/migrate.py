@@ -1,5 +1,5 @@
 from db.storage import init_db, drop_all
-from db.models import UserScript
+from backend.db.db_models import UserScript
 from datetime import date
 from db.database import get_session
 
@@ -15,7 +15,7 @@ def migrate():
     
     # Migrate existing data
     with get_session() as session:
-        # Update existing scripts to set start_balance
+        # Update existing trading models to set start_balance
         scripts = session.query(UserScript).all()
         for script in scripts:
             script.start_balance = script.balance

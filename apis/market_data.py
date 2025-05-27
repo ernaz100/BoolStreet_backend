@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify
 from sqlalchemy import desc, func
-from db.models import MarketData
+from db.db_models import MarketData
 from db.database import get_session
 from datetime import datetime, timedelta
 

@@ -3,7 +3,7 @@ from typing import List, Dict, Any
 from datetime import datetime, timedelta
 from sqlalchemy import desc
 from db.database import get_session
-from db.models import TraderPerformance, User
+from db.db_models import TraderPerformance, User
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 # Create blueprint for leaderboard routes
