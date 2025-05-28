@@ -40,7 +40,7 @@ def upload_model():
         return jsonify({"error": "No file selected"}), 400
 
     name = request.form.get('name', f.filename)
-    model_type = request.form.get('model_type', '')
+    balance = request.form.get('balance', 10000)
     code = f.read().decode('utf-8')
 
     # Handle optional weights file
@@ -63,7 +63,7 @@ def upload_model():
         return jsonify({"error": "Invalid token format"}), 401
 
     # Save model with new fields
-    model_id = save_model(name, code, user_id, weights=weights, tickers=tickers)
+    model_id = save_model(name, code, user_id, weights=weights, tickers=tickers, balance=balance)
     try:
         result, receipts = run_user_script(model_id)
         final = {

@@ -10,7 +10,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
 
 
-def save_model(name: str, code: str, user_id: str, weights: str = None, tickers: str = str) -> int:
+def save_model(name: str, code: str, user_id: str, weights: str = None, tickers: str = str, balance: int = 10000) -> int:
     """Persist a user trading model and return its assigned id.
     
     Parameters
@@ -36,7 +36,7 @@ def save_model(name: str, code: str, user_id: str, weights: str = None, tickers:
             code=code,
             user_id=user_id,
             active=True,
-            balance=1000.0,
+            balance=balance,
             weights=weights,  # Store weights if provided
             tickers=tickers  
         )
