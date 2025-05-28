@@ -69,8 +69,7 @@ class User(Base):
     picture = Column(String(512))  # URL to user's profile picture
     created_at = Column(DateTime, default=datetime.now)
     last_login = Column(DateTime, default=datetime.now, onupdate=datetime.now)
-
-    # Relationships
+    balance = Column(Float, default=100000.0)  # User's account balance
     performance = relationship("TraderPerformance", back_populates="user", uselist=False)
 
     def __repr__(self):

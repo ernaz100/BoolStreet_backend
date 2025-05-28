@@ -1,5 +1,5 @@
 from db.database import engine, get_session
-from db.db_models import Base, UserModel
+from db.db_models import Base, UserModel, User
 
 # ---------------------------------------------------------------------------
 # Public helper functions
@@ -31,6 +31,17 @@ def save_model(name: str, code: str, user_id: str, weights: str = None, tickers:
         The assigned model ID
     """
     with get_session() as session:
+        # Fetch the user
+        user = session.query(User).filter_by(id=user_id).first()
+        if not user:
+            raise Exception("User not found")
+        float_balance = float(balance)
+        # Check if user has enough balance
+        if user.balance < float_balance:
+            raise Exception("Insufficient balance to deposit into model.")
+        # Deduct the deposited balance from the user's account
+        user.balance -= float_balance
+        # Create the model
         model = UserModel(
             name=name,
             code=code,

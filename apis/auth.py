@@ -39,7 +39,8 @@ def get_or_create_user(session, user_id: str, email: str, name: str, picture: st
             name=name,
             picture=picture,
             created_at=datetime.now(),
-            last_login=datetime.now()
+            last_login=datetime.now(),
+            balance=100000.0  # Set default balance for new users
         )
         session.add(user)
     
@@ -123,11 +124,32 @@ def get_current_user():
                 'name': user.name,
                 'picture': user.picture,
                 'created_at': user.created_at.isoformat(),
-                'last_login': user.last_login.isoformat()
+                'last_login': user.last_login.isoformat(),
+                'balance': user.balance
             }
             return jsonify(user_data), 200
         finally:
             session.close()
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 401 
+        return jsonify({'error': str(e)}), 401
+
+@auth_bp.route('/auth/balance', methods=['GET'])
+@jwt_required()
+def get_user_balance():
+    """
+    Get the current user's balance for dashboard overview.
+    Returns a JSON object with the user's balance.
+    """
+    try:
+        user_id = get_jwt_identity()
+        session = get_session()
+        try:
+            user = session.query(User).filter_by(id=user_id).first()
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            return jsonify({'balance': user.balance}), 200
+        finally:
+            session.close()
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500 
