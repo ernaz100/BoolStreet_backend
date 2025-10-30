@@ -1,133 +1,129 @@
 from datetime import datetime
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from db.storage import save_model
 from db.db_models import UserModel
 from db.database import get_session
 from typing import Tuple, Dict, Any, List
+import json
 
 # Create blueprint
 models_bp = Blueprint('models', __name__)
-def run_user_script(model_id: int) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
-    """Execute the given user script and return its JSON output."""
-    return {
-        "started_at": datetime.now().isoformat(),
-        "ended_at": datetime.now().isoformat(),
-        "duration_secs": 0.0,
-        "output": "Dummy execution completed"
-    }, []
-
-@models_bp.route('/upload', methods=['POST'])
-@jwt_required()
-def upload_model():
-    """
-    Upload a user trading model.
-
-    Expects multipart/form-data with:
-    - 'file': the .py source file
-    - 'name': user-friendly name (optional, defaults to filename)
-    - 'model_type': type of model (optional)
-    - 'weights': weights file (optional)
-    - 'tickers': tickers as JSON string
-
-    Returns:
-        JSON response with model id and status
-    """
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
-    f = request.files['file']
-    if f.filename == '':
-        return jsonify({"error": "No file selected"}), 400
-
-    name = request.form.get('name', f.filename)
-    balance = request.form.get('balance', 10000)
-    code = f.read().decode('utf-8')
-
-    # Handle optional weights file
-    weights = None
-    if 'weights' in request.files:
-        weights_file = request.files['weights']
-        if weights_file and weights_file.filename:
-            weights = weights_file.read().decode('utf-8')  # Store as string
-
-    # Handle optional tickers (JSON string)
-    tickers = request.form.get('tickers')
-
-    # quick validation – require a `def run(data):` entry point
-    if "def run(" not in code:
-        return jsonify({"error": "Model must expose a `run(data)` function"}), 400
-
-    # Get user ID from JWT token
-    user_id = get_jwt_identity()
-    if not isinstance(user_id, str):
-        return jsonify({"error": "Invalid token format"}), 401
-
-    # Save model with new fields
-    model_id = save_model(name, code, user_id, weights=weights, tickers=tickers, balance=balance)
-    try:
-        result, receipts = run_user_script(model_id)
-        final = {
-            "model_id": model_id,
-            "model_name": name,
-            "started_at": result["started_at"],
-            "ended_at": result["ended_at"],
-            "duration_secs": result["duration_secs"],
-            "output": result["output"],
-            "orders": receipts,
-            "success": True
-        }
-    except Exception as exc:
-        final = {
-            "model_id": model_id,
-            "model_name": name,
-            "started_at": datetime.now().isoformat(),
-            "ended_at": datetime.now().isoformat(),
-            "duration_secs": 0,
-            "output": str(exc),
-            "success": False
-        }
-    status = "✅" if final["success"] else "❌"
-    print(f"  • Model {final['model_id']} ({final['model_name']}) {status}: {final['output']}")
-
-    return jsonify({
-        "status": "success",
-        "model_id": model_id
-    }), 200
 
 @models_bp.route('/list', methods=['GET'])
 @jwt_required()
-def get_user_models():
+def list_traders():
     """
-    Fetch all trading models for the currently logged in user.
-    
-    Returns:
-        JSON response with list of user models containing:
-        - id: model ID
-        - name: model name
-        - active: whether model is active
-        - created_at: creation date
-        - balance: current balance
+    List all trading models for the current user.
     """
     user_id = get_jwt_identity()
     if not isinstance(user_id, str):
         return jsonify({"error": "Invalid token format"}), 401
 
-    with get_session() as session:
-        models = session.query(UserModel).filter(UserModel.user_id == user_id).all()
-        return jsonify({
-            "models": [{
-                "id": model.id,
-                "name": model.name,
-                "active": model.active,
-                "created_at": model.created_at.isoformat(),
-                "balance": model.balance,
-                "tickers": model.tickers
-            } for model in models]
-        }), 200
-
-@models_bp.route('/<int:model_id>/activate', methods=['POST'])
+    # Return a mock list of traders for now
+    mock_traders = [
+        {
+            "id": 1,
+            "name": "Alpha Bot",
+            "active": True,
+            "created_at": "2024-06-01T12:00:00Z",
+            "balance": 10000.00,
+            "tickers": "BTC,ETH"
+        },
+        {
+            "id": 2,
+            "name": "Beta Trader",
+            "active": False,
+            "created_at": "2024-06-03T09:30:00Z",
+            "balance": 5200.75,
+            "tickers": "DOGE,XRP,MATIC"
+        },
+        {
+            "id": 3,
+            "name": "Gamma Guru",
+            "active": True,
+            "created_at": "2024-06-05T16:44:00Z",
+            "balance": 2448.11,
+            "tickers": "SOL"
+        }
+    ]
+    return jsonify({"models": mock_traders}), 200
+    
+@models_bp.route('/create', methods=['POST'])
 @jwt_required()
-def activate_model(model_id):
+def create_trader():
+    """
+    Create a new trading agent (LLM-based trader).
+    
+    Expects JSON with:
+    - name: trader name
+    - llm_model: LLM model to use (e.g., 'gpt-5-mini')
+    - coins: list of coins to trade (e.g., ['DOGE'])
+    - trading_frequency: frequency string (e.g., '1hour', '1day')
+    - prompt: trading prompt for the LLM
+    
+    TODO: Implement full functionality:
+    1. Validate all required fields
+    2. Store trader configuration in database
+    3. Create trading agent with specified configuration
+    4. Return trader details
+    """
+    user_id = get_jwt_identity()
+    if not isinstance(user_id, str):
+        return jsonify({"error": "Invalid token format"}), 401
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    
+    name = data.get('name')
+    llm_model = data.get('llm_model')
+    coins = data.get('coins')
+    trading_frequency = data.get('trading_frequency')
+    prompt = data.get('prompt')
+    
+    if not all([name, llm_model, coins, trading_frequency, prompt]):
+        return jsonify({"error": "Missing required fields: name, llm_model, coins, trading_frequency, prompt"}), 400
+    
+    # TODO: Validate llm_model is supported
+    # TODO: Validate coins are supported
+    # TODO: Validate trading_frequency format
+    
+    # TODO: Store trader configuration in database
+    # For now, we'll create a minimal model entry and store extra data in the code/weights field as JSON
+    # In production, add new columns to UserModel table: llm_model, trading_frequency, prompt
+    
+    # Mock: Generate a simple code template that will be replaced with LLM execution logic
+    mock_code = f"""# Trader: {name}
+# LLM Model: {llm_model}
+# Trading Frequency: {trading_frequency}
+# Prompt: {prompt}
+def run(data):
+    # LLM-based trading agent
+    return {{"action": "hold", "confidence": 0.5}}
+"""
+    
+    # Store coins as JSON string in tickers field
+    coins_json = json.dumps(coins) if isinstance(coins, list) else coins
+    
+    # Store LLM config in weights field as JSON (temporary solution)
+    llm_config = json.dumps({
+        "llm_model": llm_model,
+        "trading_frequency": trading_frequency,
+        "prompt": prompt
+    })
+    
+    try:
+        # Use existing save_model function
+        model_id = save_model(name, mock_code, user_id, weights=llm_config, tickers=coins_json, balance=10000)
+        
+        return jsonify({
+            "status": "success",
+            "model_id": model_id,
+            "name": name
+        }), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
     """
     Activate or deactivate a user's trading model.
     
@@ -165,14 +161,32 @@ def activate_model(model_id):
         model.active = new_active_state
         session.commit()
 
-        # Return updated list of models
+        # Return updated list of models with all fields
         models = session.query(UserModel).filter(UserModel.user_id == user_id).all()
-        return jsonify({
-            "models": [{
+        result_models = []
+        for model in models:
+            model_dict = {
                 "id": model.id,
                 "name": model.name,
                 "active": model.active,
                 "created_at": model.created_at.isoformat(),
-                "balance": model.balance
-            } for model in models]
+                "balance": model.balance,
+                "tickers": model.tickers
+            }
+            
+            # Try to extract LLM config from weights field if present
+            if model.weights:
+                try:
+                    llm_config = json.loads(model.weights)
+                    if isinstance(llm_config, dict) and "llm_model" in llm_config:
+                        model_dict["llm_model"] = llm_config.get("llm_model")
+                        model_dict["trading_frequency"] = llm_config.get("trading_frequency")
+                        model_dict["prompt"] = llm_config.get("prompt")
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            
+            result_models.append(model_dict)
+        
+        return jsonify({
+            "models": result_models
         }), 200 

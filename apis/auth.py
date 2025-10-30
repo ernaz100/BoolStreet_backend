@@ -133,23 +133,3 @@ def get_current_user():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 401
-
-@auth_bp.route('/auth/balance', methods=['GET'])
-@jwt_required()
-def get_user_balance():
-    """
-    Get the current user's balance for dashboard overview.
-    Returns a JSON object with the user's balance.
-    """
-    try:
-        user_id = get_jwt_identity()
-        session = get_session()
-        try:
-            user = session.query(User).filter_by(id=user_id).first()
-            if not user:
-                return jsonify({'error': 'User not found'}), 404
-            return jsonify({'balance': user.balance}), 200
-        finally:
-            session.close()
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500 

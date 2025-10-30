@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func
-from db.db_models import UserModel, ModelPrediction
+from db.db_models import UserModel
 from db.database import get_session
 
 # Create blueprint

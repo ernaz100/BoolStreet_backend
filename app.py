@@ -5,13 +5,15 @@ from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 from dotenv import load_dotenv
 import os
 import yfinance as yf
-from layers.ingestion import fetch_yfinance_current, start_scheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 from db.storage import init_db, drop_all
 from apis.auth import auth_bp
 from apis.trading_models import models_bp
 from apis.dashboard import dashboard_bp
 from apis.market_data import market_data_bp
 from apis.leaderboard import leaderboard_bp
+from apis.brokers import brokers_bp
+from layers.ingestion import fetch_and_save_market_data
 
 # Load environment variables        
 load_dotenv()
@@ -52,8 +54,9 @@ def unauthorized_callback(error_string):
 app.register_blueprint(auth_bp)
 app.register_blueprint(models_bp, url_prefix='/models')
 app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
-app.register_blueprint(market_data_bp)
+app.register_blueprint(market_data_bp, url_prefix='/api/market')
 app.register_blueprint(leaderboard_bp)
+app.register_blueprint(brokers_bp)
 
 @app.route('/reset-db', methods=['POST'])
 def reset_db():
@@ -62,12 +65,30 @@ def reset_db():
     init_db()
     return jsonify({"status": "Database reset complete"}), 200
 
-if __name__ == '__main__':
-    fetch_yfinance_current("AAPL")
+# Initialize scheduler for market data updates
+scheduler = BackgroundScheduler(daemon=True)
+scheduler.add_job(
+    func=fetch_and_save_market_data,
+    trigger="interval",
+    hours=1,
+    id='market_data_sync',
+    name='Sync market data every hour',
+    replace_existing=True
+)
 
+if __name__ == '__main__':
     # Run the app in debug mode if in development
+
     #drop_all()
     init_db()
-    start_scheduler()
+    
+    # Initial market data fetch
+    print("Fetching initial market data...")
+    fetch_and_save_market_data()
+    
+    # Start scheduler
+    scheduler.start()
+    print("Market data scheduler started (hourly updates)")
+    
     debug = os.getenv('FLASK_ENV') == 'development'
     app.run(host='0.0.0.0', port=5005, debug=debug)
