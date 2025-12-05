@@ -14,6 +14,7 @@ from apis.market_data import market_data_bp
 from apis.leaderboard import leaderboard_bp
 from apis.brokers import brokers_bp
 from layers.ingestion import fetch_and_save_market_data
+from layers.scheduler import trading_scheduler
 
 # Load environment variables        
 load_dotenv()
@@ -65,30 +66,15 @@ def reset_db():
     init_db()
     return jsonify({"status": "Database reset complete"}), 200
 
-# Initialize scheduler for market data updates
-scheduler = BackgroundScheduler(daemon=True)
-scheduler.add_job(
-    func=fetch_and_save_market_data,
-    trigger="interval",
-    hours=1,
-    id='market_data_sync',
-    name='Sync market data every hour',
-    replace_existing=True
-)
-
 if __name__ == '__main__':
     # Run the app in debug mode if in development
 
     #drop_all()
     init_db()
-    
-    # Initial market data fetch
-    print("Fetching initial market data...")
-    fetch_and_save_market_data()
-    
-    # Start scheduler
-    scheduler.start()
-    print("Market data scheduler started (hourly updates)")
+        
+    # Start trading scheduler for LLM traders
+    trading_scheduler.start()
+    print("Trading scheduler started - active traders will be executed on schedule")
     
     debug = os.getenv('FLASK_ENV') == 'development'
     app.run(host='0.0.0.0', port=5005, debug=debug)

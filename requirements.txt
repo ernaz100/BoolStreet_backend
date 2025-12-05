@@ -10,6 +10,7 @@ certifi==2025.4.26
 cffi==1.17.1
 charset-normalizer==3.4.2
 click==8.2.0
+cryptography==43.0.1
 curl_cffi==0.11.1
 docker==7.0.0
 ecdsa==0.19.1
@@ -32,10 +33,10 @@ MarkupSafe==3.0.2
 mccabe==0.7.0
 multitasking==0.0.11
 mypy_extensions==1.1.0
-numpy==1.26.4
+numpy
 oauthlib==3.2.2
 packaging==25.0
-pandas==2.2.1
+pandas
 pathspec==0.12.1
 peewee==3.18.1
 platformdirs==4.3.8
@@ -66,8 +67,12 @@ urllib3==2.4.0
 webencodings==0.5.1
 websockets==15.0.1
 Werkzeug==3.1.3
-yfinance==0.2.61
 pytest-flask==1.3.0
 pytest-mock==3.12.0
 pytest-cov==4.0.0
 factory-boy==3.3.0
+openai>=1.0.0
+pandas-ta
+ccxt>=4.0.0
+eth-account>=0.8.0
+hyperliquid-python-sdk>=0.21.0

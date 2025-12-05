@@ -1,9 +1,8 @@
 """Ingestion layer for market data used by BoolStreet.
 
 This module pulls recent OHLCV candles for a fixed list of crypto symbols
-from a ccxt exchange (defaulting to Binance), computes a small set of
-technical indicators via pandas_ta, and emits a JSON-shaped payload suitable
-for dashboards or downstream services.
+from a ccxt exchange, computes a small set of technical indicators via pandas_ta, 
+and emits a JSON-shaped payload suitable for dashboards or downstream services.
 
 Limit configuration overview:
 - INTRADAY_LIMIT: Number of most-recent candles to fetch for the intraday
@@ -30,8 +29,20 @@ from db.db_models import MarketData
 # --------------------------
 # CONFIG
 # --------------------------
-EXCHANGE = ccxt.binance()  # ccxt exchange client; swap to another ccxt exchange if needed
-SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "DOGE/USDT"]
+EXCHANGE = ccxt.binance()  # ccxt exchange client for market data (not broker connections)
+# All tradeable coins - must match config/trading_config.py SUPPORTED_COINS
+SYMBOLS = [
+    "BTC/USDT",
+    "ETH/USDT", 
+    "SOL/USDT",
+    "DOGE/USDT",
+    "XRP/USDT",
+    "BNB/USDT",
+    "ARB/USDT",
+    "AVAX/USDT",
+    "LINK/USDT",
+    "MATIC/USDT",
+]
 
 # How many recent candles to request per timeframe used in main():
 # - INTRADAY_LIMIT applies to timeframe "3m" (50 × 3m = 150 minutes at default)
