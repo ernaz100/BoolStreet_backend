@@ -15,6 +15,11 @@ leaderboard_bp = Blueprint('leaderboard', __name__)
 def calculate_trader_performance(trader: UserModel, trades: List[Trade]) -> Dict[str, Any]:
     """
     Calculate performance metrics for a trader based on their trades.
+    Simple approach: Only count realized P&L from closed positions.
+    
+    Args:
+        trader: The trader model
+        trades: List of trades for this trader
     
     Returns:
         Dict with profit_pct, net_gain, total_volume, total_trades, profitable_trades
@@ -31,8 +36,61 @@ def calculate_trader_performance(trader: UserModel, trades: List[Trade]) -> Dict
             "total_closed_positions": 0
         }
     
-    # Calculate net gain (actual dollar P&L)
-    net_gain = trader.balance - trader.start_balance
+    # Only process successful trades
+    successful_trades = [t for t in trades if t.success and t.side in ["buy", "sell"]]
+    
+    # Track open positions: {coin: [(quantity, entry_price)]} - FIFO queue
+    open_positions: Dict[str, List[tuple]] = {}
+    
+    # Track realized P&L from closed positions
+    realized_pnl = 0.0
+    total_closed_positions = 0
+    profitable_trades = 0
+    
+    # Process trades chronologically
+    for trade in sorted(successful_trades, key=lambda t: t.executed_at if t.executed_at else t.id):
+        coin = trade.coin
+        
+        if trade.side == "buy":
+            # Opening position - record the cost
+            if coin not in open_positions:
+                open_positions[coin] = []
+            open_positions[coin].append((trade.quantity, trade.price))
+        
+        elif trade.side == "sell":
+            # Closing position - calculate P&L
+            if coin in open_positions and open_positions[coin]:
+                remaining_qty = trade.quantity
+                sell_value = trade.quantity * trade.price
+                cost_basis = 0.0
+                
+                # FIFO: close oldest positions first
+                while remaining_qty > 0 and open_positions[coin]:
+                    entry_qty, entry_price = open_positions[coin][0]
+                    
+                    if entry_qty <= remaining_qty:
+                        # Close entire position
+                        cost_basis += entry_qty * entry_price
+                        remaining_qty -= entry_qty
+                        open_positions[coin].pop(0)
+                    else:
+                        # Partial close
+                        cost_basis += remaining_qty * entry_price
+                        open_positions[coin][0] = (entry_qty - remaining_qty, entry_price)
+                        remaining_qty = 0
+                
+                # Calculate realized P&L for this closed position
+                actual_sold_qty = trade.quantity - remaining_qty
+                if actual_sold_qty > 0:
+                    actual_sell_value = (actual_sold_qty / trade.quantity) * sell_value
+                    pnl = actual_sell_value - cost_basis
+                    realized_pnl += pnl
+                    total_closed_positions += 1
+                    if pnl > 0:
+                        profitable_trades += 1
+    
+    # Net gain is the realized P&L (only from closed positions)
+    net_gain = realized_pnl
     
     # Calculate profit percentage
     profit_pct = 0.0
@@ -40,55 +98,7 @@ def calculate_trader_performance(trader: UserModel, trades: List[Trade]) -> Dict
         profit_pct = (net_gain / trader.start_balance) * 100
     
     # Calculate total volume (sum of all trade values)
-    successful_trades = [t for t in trades if t.success]
     total_volume = sum(t.quantity * t.price for t in successful_trades)
-    
-    # For tracking profitable closed positions
-    profitable_trades = 0
-    total_closed_positions = 0
-    
-    # Track positions: {coin: [(quantity, entry_price)]}
-    positions: Dict[str, List[tuple]] = {}
-    
-    for trade in sorted(successful_trades, key=lambda t: t.executed_at if t.executed_at else t.id):
-        coin = trade.coin
-        
-        if trade.side == "buy":
-            # Opening or adding to position
-            if coin not in positions:
-                positions[coin] = []
-            positions[coin].append((trade.quantity, trade.price))
-        
-        elif trade.side == "sell":
-            # Closing position - calculate P&L
-            if coin in positions and positions[coin]:
-                # FIFO: close oldest positions first
-                remaining_qty = trade.quantity
-                sell_value = trade.quantity * trade.price
-                cost_basis = 0.0
-                
-                while remaining_qty > 0 and positions[coin]:
-                    entry_qty, entry_price = positions[coin][0]
-                    
-                    if entry_qty <= remaining_qty:
-                        # Close entire position
-                        cost_basis += entry_qty * entry_price
-                        remaining_qty -= entry_qty
-                        positions[coin].pop(0)
-                    else:
-                        # Partial close
-                        cost_basis += remaining_qty * entry_price
-                        positions[coin][0] = (entry_qty - remaining_qty, entry_price)
-                        remaining_qty = 0
-                
-                # Calculate P&L for this sale
-                actual_sold_qty = trade.quantity - remaining_qty
-                if actual_sold_qty > 0:
-                    actual_sell_value = (actual_sold_qty / trade.quantity) * sell_value
-                    pnl = actual_sell_value - cost_basis
-                    total_closed_positions += 1
-                    if pnl > 0:
-                        profitable_trades += 1
     
     return {
         "profit_pct": round(profit_pct, 2),

@@ -180,3 +180,17 @@ class DashboardCache(Base):
     
     def __repr__(self):
         return f"<DashboardCache(user_id='{self.user_id}', updated_at='{self.updated_at}')>"
+
+
+class PortfolioBalanceSnapshot(Base):
+    """Stores portfolio balance snapshots over time for historical tracking."""
+    
+    __tablename__ = "portfolio_balance_snapshots"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    balance = Column(Float, nullable=False)  # Total portfolio balance at this snapshot
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
+    
+    def __repr__(self):
+        return f"<PortfolioBalanceSnapshot(user_id='{self.user_id}', balance={self.balance}, created_at='{self.created_at}')>"

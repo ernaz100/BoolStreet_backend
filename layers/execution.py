@@ -291,17 +291,7 @@ OPTIONAL fields (include if relevant):
 - take_profit_pct: float, e.g., 0.10 = 10% take-profit from entry
 - reasoning: string, brief explanation of your decision (for logging)
 
-IMPORTANT - Minimum trade sizes (from Hyperliquid):
-- BTC: min 0.00001 (~$1)
-- ETH: min 0.0001 (~$0.30)
-- SOL: min 0.01 (~$2)
-- DOGE: min 1 (~$0.40)
-- XRP: min 1 (~$2.50)
-- ARB: min 0.1 (~$0.08)
-- AVAX: min 0.01 (~$0.45)
-- LINK: min 0.1 (~$2)
-- MATIC: min 0.1 (~$0.05)
-- BNB: min 0.001 (~$0.70)
+IMPORTANT - A trade must at least have above 11$ of value, else it will be rejected.
 
 When deciding quantity/position_pct, consider:
 1. The available cash balance shown in account data

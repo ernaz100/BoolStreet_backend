@@ -3,7 +3,7 @@ import json
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func, desc
-from db.db_models import UserModel, Trade, APICallLog, DashboardCache, BrokerConnection
+from db.db_models import UserModel, Trade, APICallLog, DashboardCache, BrokerConnection, PortfolioBalanceSnapshot
 from db.database import get_session
 from layers.execution import execute_all_active_traders, get_active_traders, execute_trader
 from layers.brokers.hyperliquid_broker import HyperliquidBroker
@@ -397,13 +397,13 @@ def get_positions():
 @jwt_required()
 def get_balance_history():
     """
-    Get balance history over time with trade execution markers.
+    Get balance history over time from saved snapshots.
     
     Query params:
         - days: Number of days to look back (default: 7)
     
     Returns:
-        JSON response containing balance history data points
+        JSON response containing balance history data points and trade markers
     """
     user_id = get_jwt_identity()
     if not isinstance(user_id, str):
@@ -413,7 +413,7 @@ def get_balance_history():
     
     try:
         with get_session() as session:
-            # Get broker connection for current portfolio value
+            # Get current portfolio value
             from layers.execution import get_broker_connection
             from layers.broker_factory import create_broker
             
@@ -427,14 +427,37 @@ def get_balance_history():
                 except Exception:
                     pass
             
-            # Get all traders for the user (active or not, for trade history)
+            # Get balance history from snapshots
+            cutoff_date = datetime.now() - timedelta(days=days)
+            snapshots = session.query(PortfolioBalanceSnapshot).filter(
+                PortfolioBalanceSnapshot.user_id == user_id,
+                PortfolioBalanceSnapshot.created_at >= cutoff_date
+            ).order_by(PortfolioBalanceSnapshot.created_at.asc()).all()
+            
+            # Build balance history from snapshots
+            balance_history = []
+            for snapshot in snapshots:
+                balance_history.append({
+                    "date": snapshot.created_at.strftime('%Y-%m-%d'),
+                    "balance": snapshot.balance,
+                    "timestamp": snapshot.created_at.isoformat()
+                })
+            
+            # Always include current balance as the last point
+            if current_portfolio_value > 0:
+                if not balance_history or balance_history[-1]["balance"] != current_portfolio_value:
+                    balance_history.append({
+                        "date": datetime.now().strftime('%Y-%m-%d'),
+                        "balance": current_portfolio_value,
+                        "timestamp": datetime.now().isoformat()
+                    })
+            
+            # Get trades for markers
             all_traders = session.query(UserModel).filter(
                 UserModel.user_id == user_id
             ).all()
-            
             trader_ids = [trader.id for trader in all_traders] if all_traders else []
             
-            # Get all successful trades
             trades = []
             if trader_ids:
                 trades = (
@@ -443,144 +466,6 @@ def get_balance_history():
                     .order_by(Trade.executed_at.asc())
                     .all()
                 )
-            
-            # If no trades and no broker, return empty
-            if not trades and current_portfolio_value == 0:
-                return jsonify({"history": [], "trades": []}), 200
-            
-            # Get active traders for reference
-            active_traders = [t for t in all_traders if t.active]
-            current_balance = current_portfolio_value
-            
-            # Calculate the initial balance by working backwards from current portfolio value
-            # First, calculate the net realized P&L from all trades
-            net_realized_pnl = 0.0
-            for trade in trades:
-                if trade.side == "buy":
-                    # When we buy, we spend money (negative impact on cash)
-                    net_realized_pnl -= trade.quantity * trade.price
-                elif trade.side == "sell":
-                    # When we sell, we receive money (positive impact on cash)
-                    net_realized_pnl += trade.quantity * trade.price
-            
-            # Initial balance = current balance - net P&L
-            # If current_portfolio_value is available, use it; otherwise fall back to trader start balances
-            if current_portfolio_value > 0:
-                initial_balance = current_portfolio_value - net_realized_pnl
-            else:
-                initial_balance = sum(trader.start_balance for trader in active_traders) if active_traders else 0
-            
-            # Ensure initial balance is positive
-            initial_balance = max(initial_balance, 0)
-            
-            # If no trades, just return current portfolio value as a flat line
-            if not trades and current_portfolio_value > 0:
-                end_date = datetime.now()
-                start_date = end_date - timedelta(days=days)
-                
-                balance_history = []
-                for i in range(days + 1):
-                    date = start_date + timedelta(days=i)
-                    balance_history.append({
-                        "date": date.strftime('%Y-%m-%d'),
-                        "balance": current_portfolio_value,
-                        "timestamp": date.isoformat()
-                    })
-                
-                return jsonify({
-                    "history": balance_history,
-                    "trades": []
-                }), 200
-            
-            # Get current market prices for position valuation
-            from db.db_models import MarketData
-            market_prices = {}
-            market_data_entries = session.query(MarketData).all()
-            for entry in market_data_entries:
-                market_prices[entry.coin_name] = entry.current_price
-            
-            # Build balance history from trades
-            # Track positions over time: {coin: quantity}
-            positions = {}
-            usdt_balance = initial_balance
-            
-            balance_history = []
-            
-            # Get date range
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=days)
-            
-            # Create daily data points
-            trade_index = 0
-            for i in range(days + 1):
-                date = start_date + timedelta(days=i)
-                date_str = date.strftime('%Y-%m-%d')
-                
-                # Process all trades up to this date
-                while trade_index < len(trades):
-                    trade = trades[trade_index]
-                    trade_date = trade.executed_at
-                    if trade_date and trade_date.date() <= date.date():
-                        # Apply trade to balance and positions
-                        coin = trade.coin
-                        if coin not in positions:
-                            positions[coin] = 0.0
-                        
-                        if trade.side == "buy":
-                            # Buying: reduce USDT, increase position
-                            usdt_balance -= trade.quantity * trade.price
-                            positions[coin] += trade.quantity
-                        elif trade.side == "sell":
-                            # Selling: increase USDT, decrease position
-                            usdt_balance += trade.quantity * trade.price
-                            positions[coin] -= trade.quantity
-                            if positions[coin] < 0:
-                                positions[coin] = 0.0
-                        # hold doesn't change balance or positions
-                        trade_index += 1
-                    else:
-                        break
-                
-                # Calculate total account value: USDT + position values at current market prices
-                # This shows how account value evolves based on current positions
-                total_value = usdt_balance
-                for coin, quantity in positions.items():
-                    if quantity > 0:
-                        # Use current market price to value positions
-                        # This shows account value based on current position valuations
-                        current_price = market_prices.get(coin, 0)
-                        if current_price > 0:
-                            total_value += quantity * current_price
-                        else:
-                            # Fallback: use last trade price for this coin if market price not available
-                            for trade in reversed(trades[:trade_index]):
-                                if trade.coin == coin:
-                                    total_value += quantity * trade.price
-                                    break
-                
-                balance_history.append({
-                    "date": date_str,
-                    "balance": max(0, total_value),
-                    "timestamp": date.isoformat()
-                })
-            
-            # Use actual broker balance for the most recent (current) data point
-            # This ensures the chart ends at the real portfolio value
-            if current_portfolio_value > 0 and balance_history:
-                # Calculate the adjustment factor to scale historical values correctly
-                # This ensures the chart ends at the actual broker balance
-                calculated_current = balance_history[-1]["balance"]
-                
-                if calculated_current > 0:
-                    # Scale factor to adjust all historical points so chart ends at actual value
-                    scale_factor = current_portfolio_value / calculated_current
-                    
-                    # Apply scaling to make history consistent with current value
-                    for point in balance_history:
-                        point["balance"] = point["balance"] * scale_factor
-                else:
-                    # If calculated was 0, just set current to broker balance
-                    balance_history[-1]["balance"] = current_portfolio_value
             
             # Format trades for markers
             trade_markers = []
@@ -597,14 +482,22 @@ def get_balance_history():
                         "date": trade.executed_at.strftime('%Y-%m-%d')
                     })
             
+            # Calculate initial balance (first snapshot or sum of start balances)
+            initial_balance = 0.0
+            if balance_history:
+                initial_balance = balance_history[0]["balance"]
+            elif all_traders:
+                initial_balance = sum(trader.start_balance for trader in all_traders)
+            
             return jsonify({
                 "history": balance_history,
                 "trades": trade_markers,
                 "initial_balance": initial_balance,
-                "current_balance": current_balance if current_balance > 0 else balance_history[-1]["balance"] if balance_history else initial_balance
+                "current_balance": current_portfolio_value if current_portfolio_value > 0 else (balance_history[-1]["balance"] if balance_history else initial_balance)
             }), 200
 
     except Exception as e:
+        logger.error(f"Error fetching balance history: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -771,14 +664,63 @@ def refresh_dashboard():
                     "created_at": trader.created_at.isoformat() if trader.created_at else None
                 })
         
-        # 5. Calculate balance history (simplified - use current total value)
+        # 5. Save portfolio balance snapshot if it changed, and get balance history
         total_portfolio_value = sum(b.get("total_value", 0) for b in result["broker_balances"])
-        today = datetime.now().strftime('%Y-%m-%d')
-        result["balance_history"] = [{
-            "date": today,
-            "balance": total_portfolio_value,
-            "timestamp": datetime.now().isoformat()
-        }]
+        
+        # Get the last snapshot to check if balance changed
+        last_snapshot = session.query(PortfolioBalanceSnapshot).filter(
+            PortfolioBalanceSnapshot.user_id == user_id
+        ).order_by(desc(PortfolioBalanceSnapshot.created_at)).first()
+        
+        # Save snapshot if balance changed (or if no previous snapshot exists)
+        should_save = False
+        if not last_snapshot:
+            should_save = True
+        elif abs(last_snapshot.balance - total_portfolio_value) > 0.01:  # Only save if changed by more than $0.01
+            should_save = True
+        
+        if should_save and total_portfolio_value > 0:
+            snapshot = PortfolioBalanceSnapshot(
+                user_id=user_id,
+                balance=total_portfolio_value
+            )
+            session.add(snapshot)
+            session.commit()
+        
+        # Get balance history from snapshots (last 7 days)
+        days = 7
+        cutoff_date = datetime.now() - timedelta(days=days)
+        snapshots = session.query(PortfolioBalanceSnapshot).filter(
+            PortfolioBalanceSnapshot.user_id == user_id,
+            PortfolioBalanceSnapshot.created_at >= cutoff_date
+        ).order_by(PortfolioBalanceSnapshot.created_at.asc()).all()
+        
+        # Build balance history from snapshots
+        balance_history = []
+        if snapshots:
+            for snapshot in snapshots:
+                balance_history.append({
+                    "date": snapshot.created_at.strftime('%Y-%m-%d'),
+                    "balance": snapshot.balance,
+                    "timestamp": snapshot.created_at.isoformat()
+                })
+            
+            # Always include current balance as the last point
+            if not balance_history or balance_history[-1]["balance"] != total_portfolio_value:
+                balance_history.append({
+                    "date": datetime.now().strftime('%Y-%m-%d'),
+                    "balance": total_portfolio_value,
+                    "timestamp": datetime.now().isoformat()
+                })
+        elif total_portfolio_value > 0:
+            # No snapshots yet, but we have a balance - create a single point
+            balance_history.append({
+                "date": datetime.now().strftime('%Y-%m-%d'),
+                "balance": total_portfolio_value,
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        result["balance_history"] = balance_history
         
         # Save to cache
         _save_dashboard_cache(user_id, result)

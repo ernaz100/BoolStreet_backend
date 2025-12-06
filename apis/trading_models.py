@@ -387,6 +387,23 @@ def activate_trader(model_id):
             import logging
             logging.warning(f"Failed to sync trader {model_id} with scheduler: {e}")
 
+        # Execute first trade immediately when activating
+        first_trade_result = None
+        if new_active_state:
+            try:
+                from layers.execution import execute_trader
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"Executing first trade for trader {model_id} on activation")
+                
+                # Need to refresh model from session for execute_trader
+                first_trade_result = execute_trader(model)
+                logger.info(f"First trade result for trader {model_id}: {first_trade_result.get('success', False)}")
+            except Exception as e:
+                import logging
+                logging.warning(f"Failed to execute first trade for trader {model_id}: {e}")
+                first_trade_result = {"success": False, "error": str(e)}
+
         # Return updated list of models with all fields
         models = session.query(UserModel).filter(UserModel.user_id == user_id).all()
         result_models = []
@@ -413,9 +430,24 @@ def activate_trader(model_id):
             
             result_models.append(model_dict)
         
-        return jsonify({
+        response_data = {
             "models": result_models
-        }), 200
+        }
+        
+        # Include first trade result if we just activated
+        if new_active_state and first_trade_result is not None:
+            response_data["first_trade"] = {
+                "executed": True,
+                "success": first_trade_result.get("success", False),
+                "decision": {
+                    "coin": first_trade_result.get("decision").coin if first_trade_result.get("decision") else None,
+                    "action": first_trade_result.get("decision").decision if first_trade_result.get("decision") else None,
+                } if first_trade_result.get("decision") else None,
+                "trade_result": first_trade_result.get("trade_result"),
+                "error": first_trade_result.get("error")
+            }
+        
+        return jsonify(response_data), 200
 
 
 @models_bp.route('/<int:model_id>', methods=['DELETE'])

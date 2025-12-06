@@ -463,23 +463,40 @@ class HyperliquidBroker(BrokerInterface):
     def _round_price(self, coin: str, price: float) -> float:
         """Round price to appropriate decimal places for Hyperliquid.
         
-        Different coins have different tick sizes.
+        Uses the SDK's logic to ensure prices are divisible by tick size.
+        Formula: round to (6 - sz_decimals) decimals for perps, (8 - sz_decimals) for spot.
+        This matches the SDK's _slippage_price method.
         """
-        # Price decimals (tick size precision)
-        price_decimals = {
-            "BTC": 1,     # $0.1 tick
-            "ETH": 2,     # $0.01 tick
-            "SOL": 2,     # $0.01 tick
-            "DOGE": 5,    # $0.00001 tick
-            "XRP": 4,     # $0.0001 tick
-            "ARB": 4,     # $0.0001 tick
-            "AVAX": 2,    # $0.01 tick
-            "LINK": 3,    # $0.001 tick
-            "MATIC": 4,   # $0.0001 tick
-            "BNB": 2,     # $0.01 tick
-        }
-        decimals = price_decimals.get(coin.upper(), 2)
-        return round(price, decimals)
+        try:
+            # Use SDK's name_to_coin mapping (same as SDK does)
+            coin_name = self.info.name_to_coin.get(coin.upper())
+            if coin_name is None:
+                logger.warning(f"Could not find coin mapping for {coin}, using fallback rounding")
+                return round(price, 2)
+            
+            # Get asset ID from coin name
+            asset = self.info.coin_to_asset.get(coin_name)
+            if asset is None:
+                logger.warning(f"Could not find asset for {coin_name}, using fallback rounding")
+                return round(price, 2)
+            
+            # Check if it's spot (spot assets start at 10000)
+            is_spot = asset >= 10_000
+            
+            # Get sz_decimals for this asset
+            sz_decimals = self.info.asset_to_sz_decimals.get(asset, 0)
+            
+            # Use SDK's rounding formula: round to (6 - sz_decimals) for perps, (8 - sz_decimals) for spot
+            # First round to 5 significant figures, then to the appropriate decimal places
+            # This matches: round(float(f"{px:.5g}"), (6 if not is_spot else 8) - self.info.asset_to_sz_decimals[asset])
+            price_5sig = float(f"{price:.5g}")
+            decimals = (6 if not is_spot else 8) - sz_decimals
+            return round(price_5sig, decimals)
+            
+        except Exception as e:
+            logger.warning(f"Error rounding price for {coin}: {e}, using fallback")
+            # Fallback to simple rounding
+            return round(price, 2)
     
     def get_account_info(self) -> Dict[str, Any]:
         """Get account information from Hyperliquid."""
@@ -534,29 +551,65 @@ class HyperliquidBroker(BrokerInterface):
             quantity = round(quantity, sz_decimals)
             trigger_price = self._round_price(coin, trigger_price)
             
-            # Get current price to determine trigger direction
+            # Get current price to validate trigger price
             current_price = self._get_current_price(coin)
             
-            # Trigger type based on position type:
-            # - "tp" (take profit) = trigger above current price
-            # - "sl" (stop loss) = trigger below current price
-            # For long stop loss: price going DOWN triggers (below current)
-            # For short stop loss: price going UP triggers (above current)
-            if is_long:
-                trigger_type = "sl"  # Triggers when price goes below
-            else:
-                trigger_type = "sl"  # For short, it's still labeled "sl" but triggers above
+            # Validate that we have a valid current price
+            if current_price <= 0:
+                return {
+                    "success": False,
+                    "order_id": None,
+                    "trigger_price": float(trigger_price),
+                    "error": f"Could not get current price for {coin}"
+                }
             
-            logger.info(f"Placing stop loss: {coin} qty={quantity} trigger={trigger_price} is_long={is_long}")
+            # Validate trigger price is positive
+            if trigger_price <= 0:
+                return {
+                    "success": False,
+                    "order_id": None,
+                    "trigger_price": 0.0,
+                    "error": f"Invalid trigger price: {trigger_price}"
+                }
+            
+            # Hyperliquid validation: SL trigger must be on correct side of current price
+            # For long: trigger must be BELOW current price
+            # For short: trigger must be ABOVE current price
+            if is_long and trigger_price >= current_price:
+                # Adjust trigger to be slightly below current price (0.5% below)
+                adjusted_trigger = current_price * 0.995
+                logger.warning(f"SL trigger {trigger_price} >= current {current_price} for long, adjusting to {adjusted_trigger}")
+                trigger_price = self._round_price(coin, adjusted_trigger)
+            elif not is_long and trigger_price <= current_price:
+                # Adjust trigger to be slightly above current price (0.5% above)
+                adjusted_trigger = current_price * 1.005
+                logger.warning(f"SL trigger {trigger_price} <= current {current_price} for short, adjusting to {adjusted_trigger}")
+                trigger_price = self._round_price(coin, adjusted_trigger)
+            
+            logger.info(f"Placing stop loss: {coin} qty={quantity} trigger={trigger_price} current={current_price} is_long={is_long}")
+            
+            # For market stop loss orders, set limit price with slippage to ensure fill
+            # When selling (closing long), use lower limit; when buying (closing short), use higher limit
+            slippage = 0.03  # 3% slippage for stop loss to ensure fill in volatile markets
+            if is_long:
+                # Closing long = selling, accept lower price
+                limit_price = trigger_price * (1 - slippage)
+            else:
+                # Closing short = buying, accept higher price
+                limit_price = trigger_price * (1 + slippage)
+            limit_price = self._round_price(coin, limit_price)
             
             # Use the SDK's order method with trigger
             # Hyperliquid uses "trigger" orders with tpsl flag
+            # Note: triggerPx must be a float (SDK's float_to_wire function expects float)
+            # Ensure trigger_price is explicitly a float to avoid type issues
+            trigger_price_float = float(trigger_price)
             order_result = self.exchange.order(
                 name=coin,
                 is_buy=is_buy,
                 sz=quantity,
-                limit_px=trigger_price,  # Execution price (can be same as trigger for market-like)
-                order_type={"trigger": {"triggerPx": trigger_price, "isMarket": True, "tpsl": "sl"}},
+                limit_px=limit_price,
+                order_type={"trigger": {"triggerPx": trigger_price_float, "isMarket": True, "tpsl": "sl"}},
                 reduce_only=True
             )
             
@@ -573,7 +626,7 @@ class HyperliquidBroker(BrokerInterface):
                         return {
                             "success": False,
                             "order_id": None,
-                            "trigger_price": trigger_price,
+                            "trigger_price": float(trigger_price),
                             "error": status["error"]
                         }
                     
@@ -584,7 +637,7 @@ class HyperliquidBroker(BrokerInterface):
                     return {
                         "success": True,
                         "order_id": order_id,
-                        "trigger_price": trigger_price,
+                        "trigger_price": float(trigger_price),
                         "quantity": quantity,
                         "order_type": "stop_loss"
                     }
@@ -592,16 +645,17 @@ class HyperliquidBroker(BrokerInterface):
             return {
                 "success": False,
                 "order_id": None,
-                "trigger_price": trigger_price,
+                "trigger_price": float(trigger_price),
                 "error": "Unknown error placing stop loss"
             }
             
         except Exception as e:
             logger.error(f"Error placing stop loss order: {e}")
+            trigger_price_val = float(trigger_price) if 'trigger_price' in locals() else 0.0
             return {
                 "success": False,
                 "order_id": None,
-                "trigger_price": trigger_price,
+                "trigger_price": trigger_price_val,
                 "error": str(e)
             }
     
@@ -639,15 +693,64 @@ class HyperliquidBroker(BrokerInterface):
             quantity = round(quantity, sz_decimals)
             trigger_price = self._round_price(coin, trigger_price)
             
-            logger.info(f"Placing take profit: {coin} qty={quantity} trigger={trigger_price} is_long={is_long}")
+            # Get current price to validate trigger price
+            current_price = self._get_current_price(coin)
+            
+            # Validate that we have a valid current price
+            if current_price <= 0:
+                return {
+                    "success": False,
+                    "order_id": None,
+                    "trigger_price": float(trigger_price),
+                    "error": f"Could not get current price for {coin}"
+                }
+            
+            # Validate trigger price is positive
+            if trigger_price <= 0:
+                return {
+                    "success": False,
+                    "order_id": None,
+                    "trigger_price": 0.0,
+                    "error": f"Invalid trigger price: {trigger_price}"
+                }
+            
+            # Hyperliquid validation: TP trigger must be on correct side of current price
+            # For long: trigger must be ABOVE current price
+            # For short: trigger must be BELOW current price
+            if is_long and trigger_price <= current_price:
+                # Adjust trigger to be slightly above current price (0.5% above)
+                adjusted_trigger = current_price * 1.005
+                logger.warning(f"TP trigger {trigger_price} <= current {current_price} for long, adjusting to {adjusted_trigger}")
+                trigger_price = self._round_price(coin, adjusted_trigger)
+            elif not is_long and trigger_price >= current_price:
+                # Adjust trigger to be slightly below current price (0.5% below)
+                adjusted_trigger = current_price * 0.995
+                logger.warning(f"TP trigger {trigger_price} >= current {current_price} for short, adjusting to {adjusted_trigger}")
+                trigger_price = self._round_price(coin, adjusted_trigger)
+            
+            logger.info(f"Placing take profit: {coin} qty={quantity} trigger={trigger_price} current={current_price} is_long={is_long}")
+            
+            # For market take profit orders, set limit price with slippage to ensure fill
+            # When selling (closing long), accept slightly lower; when buying (closing short), accept slightly higher
+            slippage = 0.01  # 1% slippage for take profit (less aggressive since price is favorable)
+            if is_long:
+                # Closing long = selling, accept slightly lower price
+                limit_price = trigger_price * (1 - slippage)
+            else:
+                # Closing short = buying, accept slightly higher price
+                limit_price = trigger_price * (1 + slippage)
+            limit_price = self._round_price(coin, limit_price)
             
             # Use the SDK's order method with trigger for take profit
+            # Note: triggerPx must be a float (SDK's float_to_wire function expects float)
+            # Ensure trigger_price is explicitly a float to avoid type issues
+            trigger_price_float = float(trigger_price)
             order_result = self.exchange.order(
                 name=coin,
                 is_buy=is_buy,
                 sz=quantity,
-                limit_px=trigger_price,
-                order_type={"trigger": {"triggerPx": trigger_price, "isMarket": True, "tpsl": "tp"}},
+                limit_px=limit_price,
+                order_type={"trigger": {"triggerPx": trigger_price_float, "isMarket": True, "tpsl": "tp"}},
                 reduce_only=True
             )
             
@@ -664,7 +767,7 @@ class HyperliquidBroker(BrokerInterface):
                         return {
                             "success": False,
                             "order_id": None,
-                            "trigger_price": trigger_price,
+                            "trigger_price": float(trigger_price),
                             "error": status["error"]
                         }
                     
@@ -675,7 +778,7 @@ class HyperliquidBroker(BrokerInterface):
                     return {
                         "success": True,
                         "order_id": order_id,
-                        "trigger_price": trigger_price,
+                        "trigger_price": float(trigger_price),
                         "quantity": quantity,
                         "order_type": "take_profit"
                     }
@@ -683,16 +786,17 @@ class HyperliquidBroker(BrokerInterface):
             return {
                 "success": False,
                 "order_id": None,
-                "trigger_price": trigger_price,
+                "trigger_price": float(trigger_price),
                 "error": "Unknown error placing take profit"
             }
             
         except Exception as e:
             logger.error(f"Error placing take profit order: {e}")
+            trigger_price_val = float(trigger_price) if 'trigger_price' in locals() else 0.0
             return {
                 "success": False,
                 "order_id": None,
-                "trigger_price": trigger_price,
+                "trigger_price": trigger_price_val,
                 "error": str(e)
             }
     
